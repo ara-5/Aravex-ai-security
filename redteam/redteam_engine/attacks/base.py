@@ -4,12 +4,12 @@ from __future__ import annotations
 import abc
 import dataclasses
 
-from redteam_engine.target_client import TargetClient
+from redteam_engine.target_adapter import TargetAdapter
 
 
 @dataclasses.dataclass
 class AttackContext:
-    client: TargetClient
+    client: TargetAdapter  # any adapter conforming to target_adapter.TargetAdapter, not just TargetClient
     canaries: dict
     campaign_session_prefix: str
 

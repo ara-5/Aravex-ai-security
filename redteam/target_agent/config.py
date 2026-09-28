@@ -28,6 +28,24 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
 # a real local LLM instead of the deterministic offline stand-in.
 USE_OLLAMA = os.getenv("USE_OLLAMA", "false").lower() == "true"
 
+# --- Pluggable LLM provider (target_agent/llm_providers.py) ---
+# One of: "naive" | "ollama" | "openai_compatible". Defaults from
+# USE_OLLAMA for backward compatibility; set LLM_PROVIDER explicitly to
+# override. Whatever provider is misconfigured/unreachable, the agent
+# always falls back to "naive" rather than breaking.
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "").strip().lower() or ("ollama" if USE_OLLAMA else "naive")
+
+# Any OpenAI-compatible /v1/chat/completions server: OpenAI, Azure OpenAI
+# (point base_url at your deployment), vLLM, LM Studio, Groq, OpenRouter...
+OPENAI_COMPATIBLE_BASE_URL = os.getenv("OPENAI_COMPATIBLE_BASE_URL", "https://api.openai.com/v1")
+OPENAI_COMPATIBLE_API_KEY = os.getenv("OPENAI_COMPATIBLE_API_KEY", "")
+OPENAI_COMPATIBLE_MODEL = os.getenv("OPENAI_COMPATIBLE_MODEL", "gpt-4o-mini")
+
+# --- Pluggable embedding provider (target_agent/vectorstore.py) ---
+# "hash" (default, zero-dependency) | "ollama" (real embedding model).
+EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "hash").strip().lower()
+OLLAMA_EMBEDDING_MODEL = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
+
 # --- Deliberately planted secrets (canaries) ---
 # A secure agent would never put these in a system prompt or tool-accessible
 # memory/DB. This one does, so the red team can prove exfiltration.
@@ -54,3 +72,9 @@ FILE_SANDBOX_ROOT = DATA_DIR / "sandbox"
 FILE_SANDBOX_ROOT.mkdir(exist_ok=True)
 
 MAX_AGENT_HOPS = 3
+
+# Optional shared-secret auth for the /admin/* introspection routes.
+# Empty (default) = open, fine for local/CI use where the whole point is
+# that AgentShield can freely introspect its own authorized target. Set
+# this before exposing the service beyond localhost.
+ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "")

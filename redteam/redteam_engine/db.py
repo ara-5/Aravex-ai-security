@@ -1,15 +1,28 @@
 """SQLAlchemy models + session for the red-team engine (AgentShield)."""
 from datetime import datetime, timezone
 
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, Float
+from sqlalchemy import create_engine, event, Column, Integer, String, Text, DateTime, Boolean, Float
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from redteam_engine.config import DATABASE_URL
 
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {},
+    connect_args={"check_same_thread": False, "timeout": 30} if DATABASE_URL.startswith("sqlite") else {},
 )
+
+if DATABASE_URL.startswith("sqlite"):
+    # WAL lets readers and writers proceed concurrently instead of
+    # serializing on a single file lock -- needed now that the planner
+    # (planner.py) runs multiple techniques' attempts from worker threads,
+    # each with its own session/connection.
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragma(dbapi_connection, _):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=30000")
+        cursor.close()
+
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 Base = declarative_base()
 
@@ -44,6 +57,8 @@ class AttackAttempt(Base):
     severity = Column(String, default="low")
     confidence = Column(Float, default=0.0)
     evidence = Column(Text)
+    llm_judge_verdict = Column(String, nullable=True)  # optional second opinion; never authoritative
+    llm_judge_rationale = Column(Text, nullable=True)
     created_at = Column(DateTime, default=now)
 
 

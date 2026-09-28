@@ -17,10 +17,11 @@ import uuid
 from redteam_engine.attacks import FAMILY_BY_CATEGORY
 from redteam_engine.attacks.base import Attack, AttackContext
 from redteam_engine.db import SessionLocal, Finding, now
+from redteam_engine.target_adapter import TargetAdapter
 from redteam_engine.target_client import TargetClient
 
 
-def run_regression(finding_id: int, client: TargetClient | None = None) -> dict:
+def run_regression(finding_id: int, client: TargetAdapter | None = None) -> dict:
     client = client or TargetClient()
     db = SessionLocal()
     try:

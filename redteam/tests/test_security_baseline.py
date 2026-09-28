@@ -10,6 +10,7 @@ noticing -- the exact Attack -> FAIL -> Fix -> Regression -> PASS loop
 AgentShield's dashboard demonstrates interactively, wired into CI.
 """
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -20,7 +21,10 @@ from redteam_engine.attacks import FAMILY_BY_CATEGORY
 from redteam_engine.attacks.base import AttackContext
 from redteam_engine.target_client import TargetClient
 
-BASELINE_PATH = Path(__file__).resolve().parent.parent / "security_baseline.json"
+# Overridable so the reusable composite action
+# (.github/actions/regression-gate) can point this at a different
+# baseline file via its `baseline-file` input, without editing this test.
+BASELINE_PATH = Path(os.getenv("AGENTSHIELD_BASELINE_FILE") or (Path(__file__).resolve().parent.parent / "security_baseline.json"))
 
 
 def _load_baseline() -> list[dict]:

@@ -97,6 +97,7 @@
   <div style="display:flex; gap:10px; align-items:center;">
     <span class="badge"><span class="dot" id="target-dot"></span><span id="target-status">checking target…</span></span>
     <span class="badge"><span class="dot" id="campaign-dot"></span><span id="campaign-status">idle</span></span>
+    <button id="api-key-btn" title="Only needed if REDTEAM_API_KEY is set on the server">API Key</button>
   </div>
 </header>
 
@@ -148,7 +149,16 @@ const API = "";
 const SEV_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
 const SCORE_COLOR = s => s >= 7 ? "var(--good)" : s >= 4 ? "var(--medium)" : "var(--critical)";
 
+function getApiKey() {
+  try { return localStorage.getItem("agentshield_api_key") || ""; } catch (e) { return ""; }
+}
+
 async function fetchJSON(url, opts) {
+  opts = opts || {};
+  const key = getApiKey();
+  if (key) {
+    opts.headers = Object.assign({}, opts.headers, { "X-API-Key": key });
+  }
   const r = await fetch(API + url, opts);
   return r.json();
 }
@@ -282,6 +292,13 @@ async function pollCampaign(id) {
     }
   }, 2500);
 }
+
+document.getElementById("api-key-btn").addEventListener("click", () => {
+  const current = getApiKey();
+  const next = prompt("X-API-Key sent with every request (only needed if the server has REDTEAM_API_KEY set). Leave blank to clear.", current);
+  if (next === null) return;
+  try { localStorage.setItem("agentshield_api_key", next); } catch (e) {}
+});
 
 document.getElementById("run-all").addEventListener("click", async () => {
   document.getElementById("run-all").disabled = true;

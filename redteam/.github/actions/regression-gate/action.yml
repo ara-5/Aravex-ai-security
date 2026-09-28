@@ -1,0 +1,43 @@
+name: "AgentShield Regression Gate"
+description: >
+  Replays every technique listed in a security_baseline.json file against
+  an AgentShield-adapted target and fails the build if any of them
+  reproduce -- turns "we fixed it" into a durable, CI-enforced guarantee.
+  Packaged as a composite action so it can be dropped into any repo that
+  vendors (or depends on) AgentShield's redteam_engine, referenced as
+  `uses: ./.github/actions/regression-gate` here, or published standalone
+  (`agentshield/regression-gate@v1`) for other repos to consume directly.
+
+inputs:
+  python-version:
+    description: "Python version to run the gate with"
+    required: false
+    default: "3.11"
+  working-directory:
+    description: "Directory containing requirements.txt, tests/, and security_baseline.json"
+    required: false
+    default: "."
+  baseline-file:
+    description: "Path to the security baseline file, relative to working-directory"
+    required: false
+    default: "security_baseline.json"
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+        cache: "pip"
+
+    - name: Install dependencies
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: pip install -r requirements.txt
+
+    - name: Run regression gate
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        AGENTSHIELD_BASELINE_FILE: ${{ inputs.baseline-file }}
+      run: pytest tests/test_security_baseline.py -v

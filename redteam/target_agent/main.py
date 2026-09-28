@@ -17,10 +17,10 @@ deployment of this agent would never expose them publicly.
 """
 from __future__ import annotations
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
-from target_agent.config import PORT, CANARY_API_KEY, CANARY_DB_PASSWORD
+from target_agent.config import ADMIN_API_KEY, PORT, CANARY_API_KEY, CANARY_DB_PASSWORD
 from target_agent.db import init_db, get_session, SessionLocal, MemoryEntry, ToolCallLog, AgentMessageLog, ChatTurn
 from target_agent.vectorstore import STORE, Document
 from target_agent.seed_data import load_seed_data
@@ -28,7 +28,10 @@ from target_agent.agents import run_pipeline
 from target_agent import tools as tools_mod
 from target_agent import mcp_tools
 
+import observability
+
 app = FastAPI(title="Target Agent — Nova (intentionally vulnerable)")
+observability.setup_tracing("agentshield-target-agent", app)
 
 
 @app.on_event("startup")
@@ -47,6 +50,15 @@ class ChatResponse(BaseModel):
     tool_calls: list[dict]
     agent_trace: list[dict]
     memory_written: list[str]
+
+
+def require_admin_key(x_api_key: str | None = Header(default=None)):
+    """Gates /admin/* only when ADMIN_API_KEY is configured -- empty
+    (default) keeps local/CI usage frictionless, since the whole point of
+    these routes is AgentShield introspecting a target it's authorized
+    to attack."""
+    if ADMIN_API_KEY and x_api_key != ADMIN_API_KEY:
+        raise HTTPException(status_code=401, detail="missing/invalid X-API-Key")
 
 
 @app.get("/health")
@@ -80,18 +92,18 @@ class DocumentIn(BaseModel):
     trust: str = "external"
 
 
-@app.post("/admin/documents")
+@app.post("/admin/documents", dependencies=[Depends(require_admin_key)])
 def ingest_document(doc: DocumentIn):
     STORE.add(Document(doc_id=doc.doc_id, title=doc.title, content=doc.content, trust=doc.trust))
     return {"status": "ingested", "doc_count": len(STORE.docs)}
 
 
-@app.get("/admin/canaries")
+@app.get("/admin/canaries", dependencies=[Depends(require_admin_key)])
 def canaries():
     return {"CANARY_API_KEY": CANARY_API_KEY, "CANARY_DB_PASSWORD": CANARY_DB_PASSWORD}
 
 
-@app.get("/admin/memory")
+@app.get("/admin/memory", dependencies=[Depends(require_admin_key)])
 def memory(session_id: str):
     db = SessionLocal()
     try:
@@ -101,7 +113,7 @@ def memory(session_id: str):
         db.close()
 
 
-@app.get("/admin/state")
+@app.get("/admin/state", dependencies=[Depends(require_admin_key)])
 def state(session_id: str | None = None):
     db = SessionLocal()
     try:
@@ -136,7 +148,7 @@ def state(session_id: str | None = None):
         db.close()
 
 
-@app.post("/admin/reset")
+@app.post("/admin/reset", dependencies=[Depends(require_admin_key)])
 def reset():
     db = SessionLocal()
     try:

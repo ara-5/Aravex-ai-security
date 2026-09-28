@@ -4,19 +4,22 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import Depends, FastAPI, BackgroundTasks, Header, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from redteam_engine.config import PORT, CATEGORY_LABELS
+from redteam_engine.config import PORT, CATEGORY_LABELS, REDTEAM_API_KEY
 from redteam_engine.db import init_db, SessionLocal, Campaign, AttackAttempt, Finding
 from redteam_engine.planner import AttackPlanner
 from redteam_engine.scorecard import compute_scorecard
 from redteam_engine.regression import run_regression, run_all_regressions
 from redteam_engine.target_client import TargetClient
 
+import observability
+
 app = FastAPI(title="AgentShield — Autonomous AI Agent Red-Team Platform")
+observability.setup_tracing("agentshield-redteam-engine", app)
 
 STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -25,6 +28,13 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 @app.on_event("startup")
 def startup():
     init_db()
+
+
+def require_api_key(x_api_key: str | None = Header(default=None)):
+    """Gates write endpoints only when REDTEAM_API_KEY is configured --
+    empty (default) keeps local/CI/dashboard use frictionless."""
+    if REDTEAM_API_KEY and x_api_key != REDTEAM_API_KEY:
+        raise HTTPException(status_code=401, detail="missing/invalid X-API-Key")
 
 
 @app.get("/health")
@@ -53,7 +63,7 @@ def _run_campaign_bg(name: str, categories: list[str] | None, reset_target: bool
     AttackPlanner(client).run_campaign(name, categories)
 
 
-@app.post("/campaigns/run")
+@app.post("/campaigns/run", dependencies=[Depends(require_api_key)])
 def run_campaign(req: CampaignRequest, background_tasks: BackgroundTasks):
     background_tasks.add_task(_run_campaign_bg, req.name, req.categories, req.reset_target)
     return {"status": "started", "categories": req.categories or list(CATEGORY_LABELS.keys())}
@@ -91,6 +101,7 @@ def campaign_detail(campaign_id: int):
                     "category": a.category, "technique": a.technique, "generation": a.generation,
                     "success": a.success, "severity": a.severity, "confidence": a.confidence,
                     "evidence": a.evidence, "payload": a.payload,
+                    "llm_judge_verdict": a.llm_judge_verdict, "llm_judge_rationale": a.llm_judge_rationale,
                 }
                 for a in attempts
             ],
@@ -145,12 +156,12 @@ def finding_detail(finding_id: int):
         db.close()
 
 
-@app.post("/findings/{finding_id}/regression")
+@app.post("/findings/{finding_id}/regression", dependencies=[Depends(require_api_key)])
 def regress_finding(finding_id: int):
     return run_regression(finding_id)
 
 
-@app.post("/regression/run-all")
+@app.post("/regression/run-all", dependencies=[Depends(require_api_key)])
 def regress_all():
     return {"results": run_all_regressions()}
 

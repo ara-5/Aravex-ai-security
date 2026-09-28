@@ -19,3 +19,14 @@ jobs:
         run: pip install -r requirements.txt
       - name: Run test suite
         run: pytest tests/ -v
+
+  # Runs as its own check (separate from `test` above) so a fixed-and-
+  # regressed vulnerability shows up as its own red X on a PR, not buried
+  # inside the general test run. Uses the reusable composite action from
+  # .github/actions/regression-gate, which can also be referenced by any
+  # other repo built on AgentShield's redteam_engine.
+  regression-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/regression-gate

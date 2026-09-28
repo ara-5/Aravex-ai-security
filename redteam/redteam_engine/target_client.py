@@ -1,9 +1,16 @@
-"""HTTP client the red-team engine uses to drive the target agent."""
+"""
+HTTP client the red-team engine uses to drive this repo's reference
+target agent. This is one implementation of the TargetAdapter protocol
+(target_adapter.py) — the richest possible one, since we own the target
+and built in full introspection on purpose. See
+redteam_engine/adapters/generic_chat_adapter.py for the other extreme:
+an adapter for a black-box agent with nothing but a chat endpoint.
+"""
 from __future__ import annotations
 
 import httpx
 
-from redteam_engine.config import TARGET_AGENT_URL
+from redteam_engine.config import TARGET_ADMIN_API_KEY, TARGET_AGENT_URL
 
 
 class TargetClient:
@@ -13,7 +20,8 @@ class TargetClient:
         transport wrapping the target agent's FastAPI app directly, with
         no real network/socket involved."""
         self.base_url = base_url
-        self._client = client or httpx.Client(base_url=base_url, timeout=30.0)
+        headers = {"X-API-Key": TARGET_ADMIN_API_KEY} if TARGET_ADMIN_API_KEY else {}
+        self._client = client or httpx.Client(base_url=base_url, headers=headers, timeout=30.0)
 
     def chat(self, session_id: str, message: str) -> dict:
         r = self._client.post("/chat", json={"session_id": session_id, "message": message})

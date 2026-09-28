@@ -179,101 +179,147 @@ one-time manual check. (Proven with a temporary local test that pretends
 `mcp_credential_exposure` is fixed while it still isn't — the gate failed
 the build correctly, exactly as it should on a real regression.)
 
-## Two LLM backends, by design
+## Pluggable everything: LLM, embeddings, target, judge
 
-| | Naive LLM (default) | Ollama (`USE_OLLAMA=true`) |
+Every seam that would otherwise hard-code "this repo's reference target,
+Ollama, and a canary-based judge" is behind a small interface instead —
+each proven with a real test, not just declared:
+
+| Interface | Implementations | Proof |
 |---|---|---|
-| Speed | Instant, deterministic | Realistic but slow on CPU (~10–20s/call observed with `llama3.2:3b`) |
-| Dependencies | None | A running Ollama daemon + pulled model |
+| `target_agent/llm_providers.py` — `LLMProvider` | `naive` (default, deterministic, zero deps) · `ollama` · `openai_compatible` (OpenAI, Azure OpenAI, vLLM, LM Studio, Groq, ...) | Same `TOOL_CALL: {...}` convention across all three — swap `LLM_PROVIDER` and every attack family works unmodified |
+| `target_agent/vectorstore.py` — `EmbeddingProvider` | `hash` (default, zero deps) · `ollama` (real embedding model, auto-fallback if unreachable) | RAG-poisoning tests pass unchanged under either |
+| `redteam_engine/target_adapter.py` — `TargetAdapter` | `TargetClient` (this repo's fully-introspectable reference target) · `GenericChatAdapter` (any black-box agent with nothing but a chat endpoint) | `tests/test_generic_adapter.py` spins up a **real HTTP server** and red-teams it through nothing but `GenericChatAdapter`, with zero changes to any attack family — techniques needing introspection correctly report "not observable" instead of crashing |
+| Judging | Deterministic ground-truth judges (always on) + optional `redteam_engine/llm_judge.py` LLM-judge second opinion (`ENABLE_LLM_JUDGE=true`) | Never overrides the deterministic verdict — stored alongside it on every `AttackAttempt` |
+
+Naive LLM vs. a real model, concretely:
+
+| | Naive LLM (default) | Ollama / OpenAI-compatible |
+|---|---|---|
+| Speed | Instant, deterministic | Realistic but slower (~10–20s/call observed with `llama3.2:3b` on CPU) |
+| Dependencies | None | A running model backend |
 | What it proves | The platform's mechanics: attack generation, judging, scoring, regression | Whether a **real model** falls for these techniques given this system prompt |
 
 The naive backend isn't a toy — it's a compact model of "an agent that
 follows instructions wherever it finds them," which is the exact failure
 class this platform is built to catch, and it's what makes the whole
-project runnable and demoable with zero setup. Flip `USE_OLLAMA=true` and
-point `OLLAMA_MODEL` at a pulled model (`.env.example`) to red-team a real
+project runnable and demoable with zero setup. Set `LLM_PROVIDER` (or
+`USE_OLLAMA=true`) and the matching model/URL in `.env` to red-team a real
 model instead — same attack engine, same scorecard, same regression tests.
 
 ## Tech stack
 
 Python, FastAPI, LangGraph (with a same-shaped local fallback so the
 3-agent pipeline runs even without the package installed), SQLAlchemy
-(SQLite by default, Postgres via `DATABASE_URL` — see `docker-compose.yml`'s
+(SQLite by default, tuned with WAL + busy-timeout for the planner's
+concurrent workers; Postgres via `DATABASE_URL` — see `docker-compose.yml`'s
 `postgres` profile), FAISS when available / numpy cosine-similarity
-otherwise, Ollama for local models, Docker, pytest, GitHub Actions.
+otherwise, Ollama and any OpenAI-compatible endpoint for real models,
+OpenTelemetry (opt-in), Docker, pytest, GitHub Actions (including a
+reusable composite Action — see below).
 
 **By design, this is a hand-built attack engine, not a wrapper around
-PyRIT/Garak/Promptfoo/DeepEval** — see [Roadmap](#roadmap--future-proofing)
-for how those fit in as optional, additive integrations rather than the
-core.
+PyRIT/Garak/Promptfoo/DeepEval** — those stay documented, additive
+integration points rather than dependencies.
+
+## Concurrency
+
+`redteam_engine/planner.py` runs independent (family, seed-technique)
+jobs across a thread pool (`REDTEAM_MAX_WORKERS`, default 4) — a full
+23-seed, 11-category campaign completes in single-digit seconds against
+the naive backend. Each worker owns its own DB session (SQLAlchemy
+sessions aren't thread-safe to share); `httpx.Client` is documented safe
+for concurrent use. This surfaced and fixed a real bug along the way: the
+target agent's RAG vector store is a process-wide singleton, and FastAPI
+runs sync route handlers in a thread pool too, so concurrent chat
+requests were racing on `VectorStore._rebuild()` and intermittently
+500-ing unrelated attempts. Fixed with an `RLock` around every mutation
+and read (`target_agent/vectorstore.py`) — verified with three
+consecutive concurrent campaigns and zero errors in the logs.
+
+## Optional auth
+
+Both services are open by default (the point of `/admin/*` is that
+AgentShield introspects a target it's authorized to attack). Set
+`ADMIN_API_KEY` on the target and matching `TARGET_ADMIN_API_KEY` /
+`REDTEAM_API_KEY` on the engine before exposing either beyond localhost —
+gates `target_agent`'s `/admin/*` routes and `redteam_engine`'s write
+endpoints (`/campaigns/run`, `/findings/*/regression`,
+`/regression/run-all`) via a `X-API-Key` header; read-only endpoints stay
+open so the dashboard remains viewable. The dashboard has a small **API
+Key** button (stored in `localStorage`) for setting it from the browser.
+
+## Observability
+
+Set `ENABLE_OTEL=true` for OpenTelemetry tracing across both services —
+`observability.py` auto-instruments every HTTP route (FastAPIInstrumentor)
+and `redteam_engine/planner.py` adds a fine-grained `attack_attempt` span
+per attempt with category/technique/success attributes. Exports to the
+console with zero setup, or to any OTLP/HTTP collector (Jaeger, Tempo,
+Honeycomb, ...) via `OTEL_EXPORTER_OTLP_ENDPOINT`. Every import is
+defensive — disabled or uninstalled, both services run exactly as before.
+
+## CI regression gate as a reusable Action
+
+`.github/actions/regression-gate/` packages the fix-and-verify loop as a
+composite Action, referenced locally in `ci.yml` (`uses:
+./.github/actions/regression-gate`) as its own CI check, separate from the
+general test run — so a real regression shows up as its own red X on a
+PR. Takes `baseline-file`/`working-directory` inputs, so it's a short
+step away from publishing standalone (`agentshield/regression-gate@v1`)
+for any other repo running an AgentShield-adapted target.
 
 ## Repo layout
 
 ```
-target_agent/         the vulnerable system under test
-  config.py             system prompt, canary secrets, feature flags
-  llm.py                Ollama client + the offline "naive" LLM
-  agents.py              Router → Researcher → Executor pipeline
-  tools.py, mcp_tools.py  tool + MCP registries and handlers
-  vectorstore.py, seed_data.py   RAG
-  db.py, main.py          persistence, FastAPI app + /admin introspection
+observability.py       shared opt-in OpenTelemetry setup (both services)
 
-redteam_engine/        AgentShield itself
-  attacks/               one AttackFamily per category (11 total)
-  planner.py              the agentic attack loop
-  llm_adversary.py         attack mutation/generation
+target_agent/          the vulnerable system under test
+  config.py               system prompt, canary secrets, feature flags
+  llm.py                  thin dispatcher over llm_providers.py
+  llm_providers.py         pluggable LLMProvider: naive | ollama | openai_compatible
+  agents.py                Router → Researcher → Executor pipeline
+  tools.py, mcp_tools.py    tool + MCP registries and handlers
+  vectorstore.py            pluggable EmbeddingProvider RAG store (thread-safe)
+  seed_data.py, db.py, main.py   RAG seed docs, persistence, FastAPI app + /admin
+
+redteam_engine/         AgentShield itself
+  attacks/                  one AttackFamily per category (11 total)
+  planner.py                 the agentic attack loop (concurrent across techniques)
+  llm_adversary.py            attack mutation/generation
+  llm_judge.py                 optional LLM-judge second opinion
+  target_adapter.py             the TargetAdapter protocol
+  adapters/generic_chat_adapter.py   black-box-agent adapter
+  target_client.py               reference adapter for this repo's own target
   judge helpers in attacks/base.py, scorecard.py, report.py, regression.py
-  main.py, static/dashboard.html   API + dashboard
+  main.py, static/dashboard.html   API + dashboard (optional API-key auth)
 
-tests/                 pytest suite, incl. the CI regression gate
-security_baseline.json   techniques that must never reproduce
+tests/                  pytest suite, incl. the CI regression gate
+.github/actions/regression-gate/   the gate packaged as a reusable Action
+security_baseline.json    techniques that must never reproduce
 ```
 
-## Roadmap / future-proofing
+## What's still genuinely open
 
-Things I'd reach for next, roughly in order of leverage:
+Honest gaps, not yet closed:
 
-1. **Pluggable target adapter.** Right now AgentShield speaks a fixed
-   contract (`/chat`, `/admin/state`, `/admin/documents`, ...) to one
-   reference target. The highest-leverage next step is a thin adapter
-   interface so AgentShield can red-team *any* agent — a different
-   LangGraph app, an OpenAI Assistants-based bot, a hosted product — by
-   implementing a small adapter instead of matching this exact API. Turns
-   this from "a demo with its own target" into a general-purpose tool.
-2. **Pluggable model/embedding providers.** `llm.py` and `vectorstore.py`
-   are intentionally small and swappable, but not yet behind a formal
-   interface. Adding a `Provider` protocol (Ollama, OpenAI, Anthropic,
-   Bedrock / sentence-transformers, Qdrant, pgvector) makes the platform
-   useful for red-teaming whatever stack a team actually runs in
-   production, not just a local Ollama model.
-3. **LLM-judge for free-text success criteria.** Current judging is
-   ground-truth-based (canaries, real tool calls, MCP logs) — robust, but
-   blind to attacks whose "success" is a subtler behavioral shift (tone,
-   partial compliance, subtle policy erosion) rather than a discrete
-   action. A DeepEval/PyRIT-style LLM-judge pass as a *second opinion*
-   alongside the deterministic judges would close that gap without giving
-   up the reliability of ground-truth checks for the attacks that have one.
-4. **Concurrency.** The planner runs attacks sequentially; running
-   independent techniques concurrently (asyncio/httpx.AsyncClient) turns a
-   multi-minute large-scale campaign (think PyRIT/Garak-scale fuzzing, or
-   dozens of mutation rounds) into a much shorter one.
-5. **OpenTelemetry tracing** across both services — a span per attack
-   attempt/chat turn/tool call — would make campaigns debuggable at scale
-   and is a natural fit given the platform already logs everything
-   structurally.
-6. **Persistent, shared infrastructure profile.** `docker-compose.yml`
-   already supports a Postgres profile for real persistence; a natural
-   next step is a Qdrant/pgvector profile behind the same vectorstore
-   interface from #2, for a genuinely multi-worker, production-shaped
-   deployment.
-7. **Auth + RBAC on the dashboard/API.** Fine for local/CI use now; a
-   hosted multi-tenant version would need real authentication before the
-   `/admin/*` introspection routes could ever be exposed beyond localhost.
-8. **CI regression gate as a reusable GitHub Action.** The mechanism in
-   `tests/test_security_baseline.py` already works; packaging it as a
-   standalone Action (`uses: agentshield/regression-gate@v1`) would let any
-   repo running an AgentShield-adapted target drop the gate into their own
-   CI without vendoring the test file.
+- **Full multi-tenant auth/RBAC.** The shared-secret gate above is real
+  but deliberately minimal — no user accounts, no per-route roles. Fine
+  for local/CI/single-team use; a hosted multi-tenant version needs more.
+- **Qdrant/pgvector.** `EmbeddingProvider` makes the embedding model
+  swappable; the vector *store* itself is still in-process
+  FAISS/numpy. A `Qdrant`/`pgvector` backend behind the same interface
+  would be the natural next step for a genuinely multi-worker deployment
+  (Postgres itself is already supported for the relational data, via the
+  `postgres` `docker-compose.yml` profile).
+- **True async, not threads.** The planner's concurrency is a
+  `ThreadPoolExecutor` (simple, and enough to turn a 23-seed campaign
+  into single-digit seconds) rather than `asyncio`/`httpx.AsyncClient`.
+  Real PyRIT/Garak-scale fuzzing (thousands of payloads) would want the
+  latter for lower per-task overhead.
+- **The regression-gate Action is local-only.** It's a real composite
+  Action (`.github/actions/regression-gate`) and already runs as its own
+  CI check here, but hasn't been extracted to its own published repo yet.
 
 ## Authorized-use note
 
