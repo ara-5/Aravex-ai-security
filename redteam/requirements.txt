@@ -1,0 +1,16 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.8
+sqlalchemy>=2.0
+httpx>=0.27
+numpy>=1.26
+python-dotenv>=1.0
+jinja2>=3.1
+
+# Optional (used if installed / reachable, code falls back gracefully otherwise)
+langgraph>=0.2
+faiss-cpu>=1.8; platform_system != "Windows"
+psycopg2-binary>=2.9
+
+# Dev / testing
+pytest>=8.0
