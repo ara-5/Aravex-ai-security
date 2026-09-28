@@ -124,7 +124,9 @@ tool on an `ALLOW` response, never on `HUMAN_APPROVAL`.
 - **Prometheus** (`gateway/telemetry/metrics.py`, served at `/metrics`) --
   request counts by decision, rule-match counts, risk-score distribution,
   security-finding counts, pending-approval gauge. `docker-compose.yml`
-  wires up Prometheus + Grafana to scrape and visualize it.
+  wires up Prometheus to scrape it and Grafana to visualize it, with the
+  data source and an overview dashboard auto-provisioned from
+  `grafana/provisioning/` and `grafana/dashboards/` -- no manual setup.
 
 ## Why this is a deeper problem than prompt filtering
 

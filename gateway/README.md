@@ -74,9 +74,16 @@ docker compose up --build
 
 - Gateway: http://localhost:8000
 - Prometheus: http://localhost:9090
-- Grafana: http://localhost:3000 (admin/admin) -- add Prometheus
-  (`http://prometheus:9090`) as a data source and chart
-  `aegisai_requests_total`, `aegisai_risk_score`, `aegisai_pending_approvals`.
+- Grafana: http://localhost:3000 -- the Prometheus data source and the
+  **AegisAI — Zero-Trust Gateway Overview** dashboard are both auto-provisioned
+  (`grafana/provisioning/`, `grafana/dashboards/`), so it's populated on first
+  load with no manual setup: request volume and deny rate, ALLOW/DENY/HUMAN_APPROVAL
+  split, average risk score, security findings by category, policy rule matches,
+  and pending approvals. Anonymous viewer access is enabled for the demo; log in
+  as admin/admin to edit.
+
+  Run `python scripts\demo.py` (or hit the gateway however you like) while the
+  stack is up and the dashboard fills in live.
 
 ## Tests
 
