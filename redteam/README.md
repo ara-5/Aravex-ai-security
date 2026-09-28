@@ -1,5 +1,9 @@
 # AgentShield
 
+[![CI](https://github.com/ara-5/AI-Agent-Security-Red-Team-Platform/actions/workflows/ci.yml/badge.svg)](https://github.com/ara-5/AI-Agent-Security-Red-Team-Platform/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](requirements.txt)
+
 **An autonomous AI agent red-team & security platform.** AgentShield builds a
 realistic, intentionally-vulnerable multi-agent AI system (LLM + RAG +
 long-term memory + tools + MCP + a 3-agent pipeline), then attacks it with
