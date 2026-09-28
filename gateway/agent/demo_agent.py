@@ -5,11 +5,26 @@ is ALLOW.
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import httpx
+import yaml
 
 from agent.tools import customer_db, email_tool, filesystem, payments
+
+DEV_KEYS_PATH = Path(__file__).resolve().parent.parent / ".secrets" / "agent_keys.dev.yaml"
+
+
+def load_dev_key(agent_id: str) -> str | None:
+    """Reads the plaintext bearer key minted by scripts/generate_agent_keys.py.
+    Stands in for however a real agent runtime would receive its credential
+    (injected secret, workload identity token, etc.) -- the gateway itself
+    never sees or stores this plaintext, only its hash."""
+    if not DEV_KEYS_PATH.exists():
+        return None
+    raw = yaml.safe_load(DEV_KEYS_PATH.read_text()) or {}
+    return raw.get("agents", {}).get(agent_id)
 
 TOOL_DISPATCH = {
     ("customer_db_tool", "read"): lambda ctx: customer_db.read_profile(ctx.get("customer_id", "cust_1001")),
@@ -33,8 +48,17 @@ class GatewayClient:
         self.base_url = base_url
         self._client = httpx.Client(base_url=base_url, timeout=10.0)
 
-    def submit(self, action_request: dict) -> dict:
-        response = self._client.post("/v1/agent-action", json=action_request)
+    def submit(self, action_request: dict, api_key: str | None = None) -> dict:
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+        response = self._client.post("/v1/agent-action", json=action_request, headers=headers)
+        if response.status_code == 401:
+            return {
+                "decision": "UNAUTHENTICATED",
+                "risk_score": 0.0,
+                "reasons": [response.json().get("detail", "authentication failed")],
+                "matched_rules": [],
+                "findings": [],
+            }
         response.raise_for_status()
         return response.json()
 
@@ -51,10 +75,17 @@ class AegisAgent:
     """A minimal agent runtime: every attempted action goes through the
     gateway before (if ever) reaching a real tool."""
 
-    def __init__(self, agent_id: str, human_id: str, gateway: GatewayClient | None = None):
+    def __init__(
+        self,
+        agent_id: str,
+        human_id: str,
+        gateway: GatewayClient | None = None,
+        api_key: str | None = None,
+    ):
         self.agent_id = agent_id
         self.human_id = human_id
         self.gateway = gateway or GatewayClient()
+        self.api_key = api_key if api_key is not None else load_dev_key(agent_id)
 
     def act(self, tool_id: str, action: str, resource: str, tool_context: dict[str, Any] | None = None, **kwargs) -> dict:
         tool_context = tool_context or {}
@@ -66,7 +97,7 @@ class AegisAgent:
             "resource": resource,
             **kwargs,
         }
-        decision = self.gateway.submit(action_request)
+        decision = self.gateway.submit(action_request, api_key=self.api_key)
 
         result: dict[str, Any] = {"decision": decision}
         if decision["decision"] == "ALLOW":
@@ -75,6 +106,9 @@ class AegisAgent:
         elif decision["decision"] == "HUMAN_APPROVAL":
             result["tool_result"] = None
             result["note"] = f"action parked pending human approval: {decision.get('approval_id')}"
+        elif decision["decision"] == "UNAUTHENTICATED":
+            result["tool_result"] = None
+            result["note"] = "rejected before policy evaluation -- caller could not prove it is this agent"
         else:
             result["tool_result"] = None
             result["note"] = "action blocked by AegisAI gateway"

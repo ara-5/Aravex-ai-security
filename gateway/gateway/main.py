@@ -8,24 +8,68 @@ action is safe. This is where that claim gets checked.
 """
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException
+import logging
+from contextlib import asynccontextmanager
+from typing import Annotated
+
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel
 
 from gateway.approvals.manager import ApprovalStatus, manager as approval_manager
-from gateway.audit.logger import log_approval_resolution, log_decision
+from gateway.audit.logger import log_approval_resolution, log_auth_failure, log_decision
+from gateway.identity.credentials import store as credential_store
 from gateway.identity.registry import registry
 from gateway.models import ActionRequest, Decision, PolicyDecision
 from gateway.policy.engine import engine
+from gateway.security.anomaly import tracker as anomaly_tracker
 from gateway.telemetry import metrics
 from gateway.telemetry.otel import get_tracer
+
+_startup_logger = logging.getLogger("aegisai.startup")
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    if not credential_store.is_configured():
+        _startup_logger.warning(
+            "No agent credentials loaded (gateway/identity/agent_credentials.yaml missing or empty) -- "
+            "every /v1/agent-action call will be rejected with 401. "
+            "Run `python scripts/generate_agent_keys.py` to mint credentials."
+        )
+    yield
+
 
 app = FastAPI(
     title="AegisAI Gateway",
     description="Zero-trust runtime security gateway for autonomous AI agents.",
     version="0.1.0",
+    lifespan=lifespan,
 )
+
+
+def authenticate_agent(
+    action: ActionRequest,
+    authorization: Annotated[str | None, Header()] = None,
+) -> ActionRequest:
+    """Proves the caller actually is the agent it claims to be, before
+    anything else runs. This is AuthN; the policy engine downstream handles
+    AuthZ (what that verified identity is allowed to do). Fails closed: no
+    credential store configured means no request gets through.
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        log_auth_failure(action.agent_id, "missing bearer credential")
+        anomaly_tracker.record_denial(action.agent_id)
+        raise HTTPException(status_code=401, detail="missing bearer credential")
+
+    presented_key = authorization[len("bearer "):].strip()
+    if not credential_store.verify(action.agent_id, presented_key):
+        log_auth_failure(action.agent_id, "credential did not match claimed agent_id")
+        anomaly_tracker.record_denial(action.agent_id)
+        raise HTTPException(status_code=401, detail=f"credential does not match agent '{action.agent_id}'")
+
+    return action
 
 
 @app.get("/healthz")
@@ -44,7 +88,7 @@ def list_agents() -> list[dict]:
 
 
 @app.post("/v1/agent-action", response_model=PolicyDecision)
-def agent_action(request: ActionRequest) -> PolicyDecision:
+def agent_action(request: Annotated[ActionRequest, Depends(authenticate_agent)]) -> PolicyDecision:
     """The zero-trust checkpoint. Every tool call an agent wants to make is
     submitted here first; only an ALLOW response authorizes execution."""
     tracer = get_tracer()

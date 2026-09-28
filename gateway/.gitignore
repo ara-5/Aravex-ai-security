@@ -7,3 +7,8 @@ venv/
 logs/
 audit.log
 .env
+
+# Agent credentials -- generated locally by scripts/generate_agent_keys.py,
+# never committed. See gateway/identity/agent_credentials.example.yaml.
+.secrets/
+gateway/identity/agent_credentials.yaml

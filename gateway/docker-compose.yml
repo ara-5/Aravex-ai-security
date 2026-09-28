@@ -5,6 +5,10 @@ services:
       - "8000:8000"
     volumes:
       - ./logs:/app/logs
+      # Locally-generated, gitignored credential hashes (see
+      # scripts/generate_agent_keys.py) -- mounted live so a key rotation
+      # takes effect without a rebuild.
+      - ./gateway/identity/agent_credentials.yaml:/app/gateway/identity/agent_credentials.yaml:ro
 
   prometheus:
     image: prom/prometheus:latest

@@ -103,3 +103,17 @@ def log_approval_resolution(approval_id: str, approver: str, approved: bool, dec
         action=decision.action,
         resource=decision.resource,
     )
+
+
+def log_auth_failure(claimed_agent_id: str, reason: str) -> None:
+    """A request that failed to prove it actually is the agent it claims to
+    be. This is worth watching independently of policy DENYs -- a spike here
+    means someone is guessing or replaying credentials, not just an agent
+    hitting a permission boundary."""
+    log = get_logger()
+    log.warning(
+        "security_alert",
+        alert_type="authentication_failed",
+        claimed_agent_id=claimed_agent_id,
+        reason=reason,
+    )

@@ -1,22 +1,23 @@
 """End-to-end demo against a running gateway (`uvicorn gateway.main:app`).
 
-Walks through the exact scenarios from the design brief plus a couple of
-bonus attacks (prompt injection, burst traffic) so you can see the policy
-engine, risk scoring, and anomaly detector all fire for real.
+Walks through the exact scenarios from the design brief plus a few bonus
+attacks (prompt injection, burst traffic, stolen/forged credentials) so you
+can see the policy engine, risk scoring, anomaly detector, and agent
+authentication all fire for real.
 
 Run:
-    uvicorn gateway.main:app --reload   # in one terminal
-    python scripts/demo.py              # in another
+    python scripts/generate_agent_keys.py   # once, mints agent credentials
+    uvicorn gateway.main:app --reload       # in one terminal
+    python scripts/demo.py                  # in another
 """
 from __future__ import annotations
 
 import sys
-import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from agent.demo_agent import AegisAgent, GatewayClient  # noqa: E402
+from agent.demo_agent import DEV_KEYS_PATH, AegisAgent, GatewayClient  # noqa: E402
 
 BAR = "-" * 78
 
@@ -41,6 +42,11 @@ def show(title: str, result: dict) -> None:
 
 
 def main() -> None:
+    if not DEV_KEYS_PATH.exists():
+        print("No agent credentials found -- mint them first with:")
+        print("    python scripts/generate_agent_keys.py")
+        raise SystemExit(1)
+
     gateway = GatewayClient()
     try:
         gateway._client.get("/healthz").raise_for_status()
@@ -119,6 +125,14 @@ def main() -> None:
         support.act("customer_db_tool", "read", "customer_db.profile", tool_context={"customer_id": "cust_1001"})
     burst_result = support.act("customer_db_tool", "read", "customer_db.profile", tool_context={"customer_id": "cust_1001"})
     show("   26th call in under a minute", burst_result)
+
+    forger = AegisAgent(
+        "data-ops-agent", human_id="attacker", gateway=gateway, api_key="stolen-or-guessed-key"
+    )
+    show(
+        "8) BONUS: caller claims to be data-ops-agent with a forged credential",
+        forger.act("database_admin_tool", "delete", "database.production_orders"),
+    )
 
     print(BAR)
     print("Done. Full audit trail: logs/audit.log   Metrics: http://127.0.0.1:8000/metrics")
