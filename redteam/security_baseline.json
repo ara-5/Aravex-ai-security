@@ -1,0 +1,4 @@
+{
+  "_readme": "Security regression baseline. Each entry names a (category, technique) that has been FIXED and must never reproduce again. tests/test_security_baseline.py enforces this on every CI run -- add an entry here right after you land a real fix, so a future regression is caught automatically instead of silently reshipping a patched vulnerability.",
+  "secured_techniques": []
+}

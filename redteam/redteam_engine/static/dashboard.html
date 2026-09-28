@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AgentShield — AI Security Scorecard</title>
+<style>
+  :root {
+    --bg: #0b0f14;
+    --panel: #121821;
+    --panel-2: #161e2a;
+    --border: #232d3b;
+    --text: #e6edf3;
+    --muted: #8b98a9;
+    --accent: #5ec9f0;
+    --critical: #ff5c6c;
+    --high: #ff9f4d;
+    --medium: #f4d35e;
+    --low: #7fd88f;
+    --good: #38d996;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif;
+  }
+  header {
+    padding: 20px 28px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+  }
+  header h1 { font-size: 20px; margin: 0; letter-spacing: 0.3px; }
+  header .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 20px;
+    font-size: 12px; border: 1px solid var(--border); color: var(--muted);
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .dot.ok { background: var(--good); }
+  .dot.bad { background: var(--critical); }
+  main { padding: 24px 28px; max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
+  .row { display: grid; gap: 20px; }
+  .row.two { grid-template-columns: 1.3fr 1fr; }
+  @media (max-width: 900px) { .row.two { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+  .panel h2 { margin: 0 0 14px; font-size: 15px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .overall { display: flex; align-items: baseline; gap: 10px; margin-bottom: 18px; }
+  .overall .num { font-size: 40px; font-weight: 700; }
+  .overall .lbl { color: var(--muted); font-size: 13px; }
+  .score-row { display: grid; grid-template-columns: 170px 1fr 42px; align-items: center; gap: 12px; margin: 10px 0; }
+  .score-row .name { font-size: 13px; color: var(--text); }
+  .meter { height: 10px; border-radius: 6px; background: var(--panel-2); overflow: hidden; border: 1px solid var(--border); }
+  .meter > div { height: 100%; border-radius: 6px; }
+  .score-row .val { font-size: 13px; text-align: right; color: var(--muted); }
+  .sev-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .sev-tile { border-radius: 10px; padding: 14px; text-align: center; border: 1px solid var(--border); background: var(--panel-2); }
+  .sev-tile .n { font-size: 26px; font-weight: 700; }
+  .sev-tile .l { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; }
+  .controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  select, button {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 12px; font-size: 13px; cursor: pointer;
+  }
+  button.primary { background: var(--accent); color: #04212e; border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+  tr.finding-row { cursor: pointer; }
+  tr.finding-row:hover { background: var(--panel-2); }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  .pill.critical { background: rgba(255,92,108,0.15); color: var(--critical); }
+  .pill.high { background: rgba(255,159,77,0.15); color: var(--high); }
+  .pill.medium { background: rgba(244,211,94,0.15); color: var(--medium); }
+  .pill.low { background: rgba(127,216,143,0.15); color: var(--low); }
+  .pill.open { background: rgba(255,92,108,0.15); color: var(--critical); }
+  .pill.resolved { background: rgba(56,217,150,0.15); color: var(--good); }
+  .pill.regressed { background: rgba(255,92,108,0.2); color: var(--critical); }
+  .detail { display: none; padding: 16px; background: var(--panel-2); border-radius: 10px; margin: 6px 0 16px; font-size: 13px; }
+  .detail.open { display: block; }
+  .detail h4 { margin: 12px 0 4px; color: var(--accent); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .detail h4:first-child { margin-top: 0; }
+  .detail pre { white-space: pre-wrap; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin: 4px 0; }
+  .detail .actions { margin-top: 12px; display: flex; gap: 8px; align-items: center; }
+  .regression-result { font-weight: 600; }
+  .regression-result.pass { color: var(--good); }
+  .regression-result.fail { color: var(--critical); }
+  .empty { color: var(--muted); font-size: 13px; padding: 20px 0; text-align: center; }
+  footer { text-align: center; color: var(--muted); font-size: 12px; padding: 30px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>🛡 AgentShield</h1>
+    <div class="sub">Autonomous AI Agent Red-Team &amp; Security Platform</div>
+  </div>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <span class="badge"><span class="dot" id="target-dot"></span><span id="target-status">checking target…</span></span>
+    <span class="badge"><span class="dot" id="campaign-dot"></span><span id="campaign-status">idle</span></span>
+  </div>
+</header>
+
+<main>
+  <div class="panel">
+    <h2>Run a Campaign</h2>
+    <div class="controls">
+      <button class="primary" id="run-all">Run Full Attack Campaign</button>
+      <button id="regress-all">Re-run All Regressions</button>
+      <button id="refresh">Refresh</button>
+      <span class="sub" id="last-campaign"></span>
+    </div>
+  </div>
+
+  <div class="row two">
+    <div class="panel">
+      <h2>AI Security Scorecard</h2>
+      <div class="overall">
+        <div class="num" id="overall-score">–</div>
+        <div class="lbl">/ 10 overall</div>
+      </div>
+      <div id="score-rows"></div>
+    </div>
+    <div class="panel">
+      <h2>Findings by Severity</h2>
+      <div class="sev-grid">
+        <div class="sev-tile"><div class="n" id="sev-critical" style="color:var(--critical)">0</div><div class="l">Critical</div></div>
+        <div class="sev-tile"><div class="n" id="sev-high" style="color:var(--high)">0</div><div class="l">High</div></div>
+        <div class="sev-tile"><div class="n" id="sev-medium" style="color:var(--medium)">0</div><div class="l">Medium</div></div>
+        <div class="sev-tile"><div class="n" id="sev-low" style="color:var(--low)">0</div><div class="l">Low</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Findings — Attack → Evidence → Impact → Remediation → Regression</h2>
+    <table id="findings-table">
+      <thead><tr><th>Sev</th><th>Category</th><th>Title</th><th>Status</th><th>Last Regression</th></tr></thead>
+      <tbody id="findings-tbody"></tbody>
+    </table>
+    <div class="empty" id="findings-empty" style="display:none;">No findings yet — run a campaign above.</div>
+  </div>
+</main>
+
+<footer>AgentShield attacks a system it owns, for authorized evaluation only.</footer>
+
+<script>
+const API = "";
+const SEV_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
+const SCORE_COLOR = s => s >= 7 ? "var(--good)" : s >= 4 ? "var(--medium)" : "var(--critical)";
+
+async function fetchJSON(url, opts) {
+  const r = await fetch(API + url, opts);
+  return r.json();
+}
+
+async function refreshTargetStatus() {
+  try {
+    const h = await fetchJSON("/health");
+    document.getElementById("target-dot").className = "dot " + (h.target_reachable ? "ok" : "bad");
+    document.getElementById("target-status").textContent = h.target_reachable ? "target reachable" : "target unreachable";
+  } catch (e) {
+    document.getElementById("target-dot").className = "dot bad";
+    document.getElementById("target-status").textContent = "engine unreachable";
+  }
+}
+
+async function refreshScorecard() {
+  const sc = await fetchJSON("/scorecard");
+  const overallEl = document.getElementById("overall-score");
+  overallEl.textContent = sc.overall_score.toFixed(1);
+  overallEl.style.color = SCORE_COLOR(sc.overall_score);
+
+  const rowsEl = document.getElementById("score-rows");
+  rowsEl.innerHTML = "";
+  for (const row of sc.rows) {
+    const pct = Math.max(2, row.score * 10);
+    const div = document.createElement("div");
+    div.className = "score-row";
+    div.innerHTML = `
+      <div class="name">${row.row}</div>
+      <div class="meter"><div style="width:${pct}%; background:${SCORE_COLOR(row.score)}"></div></div>
+      <div class="val">${row.score.toFixed(1)}/10</div>
+    `;
+    rowsEl.appendChild(div);
+  }
+
+  document.getElementById("sev-critical").textContent = sc.severity_counts.critical || 0;
+  document.getElementById("sev-high").textContent = sc.severity_counts.high || 0;
+  document.getElementById("sev-medium").textContent = sc.severity_counts.medium || 0;
+  document.getElementById("sev-low").textContent = sc.severity_counts.low || 0;
+}
+
+let expandedId = null;
+
+async function refreshFindings() {
+  const findings = await fetchJSON("/findings");
+  findings.sort((a, b) => (SEV_ORDER[a.severity] ?? 9) - (SEV_ORDER[b.severity] ?? 9));
+  const tbody = document.getElementById("findings-tbody");
+  tbody.innerHTML = "";
+  document.getElementById("findings-empty").style.display = findings.length ? "none" : "block";
+
+  for (const f of findings) {
+    const tr = document.createElement("tr");
+    tr.className = "finding-row";
+    tr.innerHTML = `
+      <td><span class="pill ${f.severity}">${f.severity}</span></td>
+      <td>${f.category.replace(/_/g, " ")}</td>
+      <td>${f.title}</td>
+      <td><span class="pill ${f.status}">${f.status}</span></td>
+      <td>${f.last_regression_result ? `<span class="regression-result ${f.last_regression_result.toLowerCase()}">${f.last_regression_result}</span>` : "—"}</td>
+    `;
+    tr.addEventListener("click", () => toggleDetail(f.id, tr));
+    tbody.appendChild(tr);
+
+    const detailRow = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 5;
+    const detail = document.createElement("div");
+    detail.className = "detail";
+    detail.id = `detail-${f.id}`;
+    td.appendChild(detail);
+    detailRow.appendChild(td);
+    tbody.appendChild(detailRow);
+  }
+}
+
+async function toggleDetail(id, tr) {
+  const el = document.getElementById(`detail-${id}`);
+  if (!el) return;
+  if (el.classList.contains("open")) { el.classList.remove("open"); return; }
+  document.querySelectorAll(".detail.open").forEach(d => d.classList.remove("open"));
+  el.classList.add("open");
+  if (!el.dataset.loaded) {
+    const f = await fetchJSON(`/findings/${id}`);
+    el.innerHTML = `
+      <h4>Attack</h4><pre>${escapeHtml(f.attack_payload)}</pre>
+      <h4>Evidence</h4><pre>${escapeHtml(f.evidence)}</pre>
+      <h4>Impact</h4><pre>${escapeHtml(f.impact)}</pre>
+      <h4>Remediation</h4><pre>${escapeHtml(f.remediation)}</pre>
+      <h4>Regression Test</h4>
+      <div>Replays the exact attack above against the target. <b>PASS</b> = vulnerability no longer reproduces. <b>FAIL</b> = still vulnerable.</div>
+      <div class="actions">
+        <button data-id="${f.id}" class="run-regression">Run Regression Test</button>
+        <span id="regression-live-${f.id}"></span>
+      </div>
+    `;
+    el.dataset.loaded = "1";
+    el.querySelector(".run-regression").addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const btn = e.target;
+      btn.disabled = true;
+      btn.textContent = "Running…";
+      const res = await fetchJSON(`/findings/${id}/regression`, { method: "POST" });
+      btn.disabled = false;
+      btn.textContent = "Run Regression Test";
+      document.getElementById(`regression-live-${f.id}`).innerHTML =
+        `<span class="regression-result ${res.outcome.toLowerCase()}">${res.outcome === "PASS" ? "✅ PASS" : "❌ FAIL"}</span>`;
+      refreshFindings();
+      refreshScorecard();
+    });
+  }
+}
+
+function escapeHtml(s) {
+  return (s || "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+async function pollCampaign(id) {
+  document.getElementById("campaign-dot").className = "dot";
+  document.getElementById("campaign-status").textContent = "campaign running…";
+  const iv = setInterval(async () => {
+    const c = await fetchJSON(`/campaigns/${id}`);
+    if (c.status === "completed") {
+      clearInterval(iv);
+      document.getElementById("campaign-dot").className = "dot ok";
+      document.getElementById("campaign-status").textContent = "campaign completed";
+      document.getElementById("run-all").disabled = false;
+      refreshAll();
+    } else {
+      refreshFindings();
+      refreshScorecard();
+    }
+  }, 2500);
+}
+
+document.getElementById("run-all").addEventListener("click", async () => {
+  document.getElementById("run-all").disabled = true;
+  await fetchJSON("/campaigns/run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "Dashboard campaign", reset_target: true }),
+  });
+  const campaigns = await fetchJSON("/campaigns");
+  if (campaigns.length) {
+    document.getElementById("last-campaign").textContent = `Campaign #${campaigns[0].id} started`;
+    pollCampaign(campaigns[0].id);
+  }
+});
+
+document.getElementById("regress-all").addEventListener("click", async () => {
+  const btn = document.getElementById("regress-all");
+  btn.disabled = true;
+  btn.textContent = "Running regressions…";
+  await fetchJSON("/regression/run-all", { method: "POST" });
+  btn.disabled = false;
+  btn.textContent = "Re-run All Regressions";
+  refreshAll();
+});
+
+document.getElementById("refresh").addEventListener("click", refreshAll);
+
+async function refreshAll() {
+  await Promise.all([refreshTargetStatus(), refreshScorecard(), refreshFindings()]);
+}
+
+refreshAll();
+setInterval(refreshTargetStatus, 15000);
+</script>
+</body>
+</html>

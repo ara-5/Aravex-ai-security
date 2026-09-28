@@ -1,0 +1,65 @@
+services:
+  target-agent:
+    build: .
+    command: uvicorn target_agent.main:app --host 0.0.0.0 --port 8001
+    ports:
+      - "8001:8001"
+    environment:
+      TARGET_DATABASE_URL: ${TARGET_DATABASE_URL:-sqlite:////app/data/target_agent.db}
+      USE_OLLAMA: ${USE_OLLAMA:-false}
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redteam-engine:
+    build: .
+    command: uvicorn redteam_engine.main:app --host 0.0.0.0 --port 8002
+    ports:
+      - "8002:8002"
+    environment:
+      REDTEAM_DATABASE_URL: ${REDTEAM_DATABASE_URL:-sqlite:////app/data/redteam.db}
+      TARGET_AGENT_URL: http://target-agent:8001
+      USE_OLLAMA: ${USE_OLLAMA:-false}
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
+      OLLAMA_JUDGE_MODEL: ${OLLAMA_JUDGE_MODEL:-llama3.2:3b}
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      target-agent:
+        condition: service_healthy
+
+  # Optional: a real local model instead of the offline stand-in.
+  #   docker compose --profile ollama up
+  #   (then set USE_OLLAMA=true in your .env and pull a model into the container)
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    profiles: ["ollama"]
+
+  # Optional: real Postgres instead of SQLite.
+  #   docker compose --profile postgres up
+  #   (then set TARGET_DATABASE_URL / REDTEAM_DATABASE_URL to point at it in .env)
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: agentshield
+      POSTGRES_USER: agentshield
+      POSTGRES_PASSWORD: agentshield
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    profiles: ["postgres"]
+
+volumes:
+  ollama_data:
+  pg_data:

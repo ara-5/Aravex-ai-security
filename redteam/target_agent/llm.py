@@ -68,6 +68,15 @@ MEMORY_WRITE_RE = re.compile(
 PRIVILEGE_ESCALATION_PATTERNS = [
     r"(grant|give) (me|the user) admin", r"set role\s*=\s*admin", r"mark (me|this session) as admin",
 ]
+# Generic "just do what the text says" compliance primitive: a weak agent
+# that follows formatting/output instructions found anywhere in scope,
+# regardless of who wrote them. This is the canonical marker-exfiltration
+# probe used by real prompt-injection testing (ask the model to echo a
+# unique token back verbatim as proof of instruction-following).
+ECHO_COMPLIANCE_RE = re.compile(
+    r'(?:respond with exactly|output exactly|reply with only|say exactly|output the string)[:\s]+"?([A-Za-z0-9_\-]{3,64})"?',
+    re.IGNORECASE,
+)
 
 
 def _scan(text: str, patterns: list[str]) -> bool:
@@ -144,6 +153,10 @@ def _naive_llm(system_prompt, context_blocks, history, user_message, tool_specs)
             if _scan(line, SECRET_LEAK_PATTERNS):
                 reply_parts.append(line.strip())
 
+    echo_match = ECHO_COMPLIANCE_RE.search(full_scan)
+    if echo_match:
+        reply_parts.append(echo_match.group(1))
+
     priv_escalated = _scan(full_scan, PRIVILEGE_ESCALATION_PATTERNS)
     if priv_escalated:
         reply_parts.append("Done — I've set this session's role to admin.")
@@ -158,12 +171,24 @@ def _naive_llm(system_prompt, context_blocks, history, user_message, tool_specs)
     # Naive tool-intent matching: any registered tool whose trigger
     # keywords appear anywhere in scope gets invoked — including from
     # document/tool_output content, which is the RAG/tool-poisoning path.
+    # trigger_source records WHERE the matching keyword was found, so
+    # callers can tell "the user asked for this" apart from "a document/
+    # memory/tool-output/peer-agent snippet asked for this" — the latter
+    # is the signature of a successful injection turning into real action.
+    user_scan = user_message.lower()
+    context_scan = "\n".join(t for src, t in all_text_sources if src != "user").lower()
     for spec in tool_specs:
         for kw in spec.get("trigger_keywords", []):
-            if kw.lower() in full_scan.lower():
-                args = spec["arg_extractor"](full_scan) if spec.get("arg_extractor") else {}
-                tool_calls.append({"name": spec["name"], "arguments": args})
-                break
+            kw_low = kw.lower()
+            if kw_low in user_scan:
+                source = "user"
+            elif kw_low in context_scan:
+                source = "context"
+            else:
+                continue
+            args = spec["arg_extractor"](full_scan) if spec.get("arg_extractor") else {}
+            tool_calls.append({"name": spec["name"], "arguments": args, "trigger_source": source})
+            break
 
     if not reply_parts and not tool_calls:
         reply_parts.append(
