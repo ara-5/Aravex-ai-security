@@ -38,7 +38,8 @@ For every action: **who's calling** (verified, not claimed)? Which agent?
 What permissions? What resource? What data? What's the risk? -> **ALLOW /
 DENY / HUMAN_APPROVAL**.
 
-**Contents:** [What's here](#whats-here) &middot;
+**Contents:** [Screenshots](#screenshots) &middot;
+[What's here](#whats-here) &middot;
 [Two ways to run it](#two-ways-to-run-it) &middot;
 [Quickstart](#quickstart) &middot;
 [Full stack](#run-the-full-stack-gateway--opa--redis--postgres--prometheus--grafana) &middot;
@@ -47,6 +48,16 @@ DENY / HUMAN_APPROVAL**.
 [Extending toward production](#extending-toward-production) &middot;
 [Architecture](docs/ARCHITECTURE.md) &middot;
 [Compliance mapping](docs/COMPLIANCE_MAPPING.md)
+
+## Screenshots
+
+**The auto-provisioned Grafana dashboard**, live against real traffic from `scripts/demo.py` -- request volume, ALLOW/DENY/HUMAN_APPROVAL split, deny rate, average risk score, security findings by category, which policy rules fired, and per-agent breakdown, all populated with zero manual dashboard setup:
+
+![AegisAI Grafana dashboard showing request volume, decision split, risk score, security findings, policy rule matches, and per-agent breakdown](docs/screenshots/grafana-dashboard.png)
+
+**The gateway's API surface** (FastAPI's auto-generated docs at `/docs`) -- the agent-action endpoint, the human-approval queue endpoints, and the full request/response schema, generated directly from the Pydantic models in `gateway/models.py`, never hand-written or allowed to drift from the code:
+
+![AegisAI Gateway OpenAPI docs listing the /v1/agent-action, /v1/approvals, and /healthz endpoints with their schemas](docs/screenshots/api-docs.png)
 
 ## What's here
 
