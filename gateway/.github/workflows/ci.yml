@@ -8,6 +8,36 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
+    # GitHub Actions `services:` doesn't support passing a custom command,
+    # so Redis and Postgres run as services (their default images already
+    # start correctly with no args) while OPA -- which needs `run --server
+    # /policy` -- is started with an explicit `docker run` step below.
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: aegisai
+          POSTGRES_PASSWORD: aegisai
+          POSTGRES_DB: aegisai
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@v4
 
@@ -22,8 +52,28 @@ jobs:
       - name: Validate Grafana dashboard JSON
         run: python -c "import json; json.load(open('grafana/dashboards/aegisai-overview.json')); print('valid')"
 
+      - name: Validate Rego policy (opa test)
+        run: docker run --rm -v "${{ github.workspace }}/gateway/policy/rego:/policy" openpolicyagent/opa test /policy -v
+
+      - name: Start OPA server
+        run: |
+          docker run -d --name opa -p 8181:8181 \
+            -v "${{ github.workspace }}/gateway/policy/rego:/policy" \
+            openpolicyagent/opa run --server --addr 0.0.0.0:8181 /policy
+          for i in $(seq 1 15); do
+            curl -sf http://localhost:8181/health && break
+            sleep 1
+          done
+
       - name: Mint dev agent credentials (smoke test)
         run: python scripts/generate_agent_keys.py
 
-      - name: Run tests
+      - name: Run tests (zero-infrastructure fallback paths)
+        run: pytest -q
+
+      - name: Run tests against OPA + Redis + Postgres
+        env:
+          OPA_URL: http://localhost:8181
+          REDIS_URL: redis://localhost:6379/0
+          DATABASE_URL: postgresql://aegisai:aegisai@localhost:5432/aegisai
         run: pytest -q

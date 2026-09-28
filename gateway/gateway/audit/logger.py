@@ -15,6 +15,7 @@ from pathlib import Path
 
 import structlog
 
+from gateway.audit import postgres_store
 from gateway.models import ActionRequest, PolicyDecision
 
 LOG_DIR = Path(__file__).resolve().parent.parent.parent / "logs"
@@ -89,6 +90,7 @@ def log_decision(request: ActionRequest, decision: PolicyDecision) -> None:
         findings=[f"{f.category}:{f.detail}" for f in decision.findings],
         reasons=decision.reasons,
     )
+    postgres_store.write_decision(request, decision)
 
 
 def log_approval_resolution(approval_id: str, approver: str, approved: bool, decision: PolicyDecision) -> None:

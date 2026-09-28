@@ -102,13 +102,23 @@ just like probing for a permission it doesn't have.
 
 ## Policy engine
 
-Two layers, evaluated in order:
+Three layers, evaluated in order:
 
-1. **Declarative rules** (`gateway/policy/rules.yaml`) -- explicit,
-   auditable, first-match-wins guardrails such as "never allow secret
-   access" or "production deletes require a human." These override
-   everything else.
-2. **Risk-score fallback** (`gateway/policy/risk.py`) -- for everything not
+1. **Declarative rules -- real policy-as-code.** The hard guardrails
+   ("never allow secret access", "production deletes require a human") are
+   written as Rego (`gateway/policy/rego/guardrails.rego`) and evaluated by
+   a live **OPA** server when `OPA_URL` is configured. The policy has its
+   own independent test suite (`gateway/policy/rego/guardrails_test.rego`,
+   run with `opa test`) -- it's verified as policy, not just as an
+   assertion buried in a Python test. If OPA is unreachable or not
+   configured, `gateway/policy/engine.py` falls back transparently to an
+   equivalent local YAML rule matcher (`rules.yaml`) -- same guardrails,
+   zero infrastructure required. Every decision's `reasons` carry an
+   `[opa]` prefix when OPA made the call, so which path fired is always
+   visible, not just assumed.
+2. **IAM permission check** (below) -- runs after the declarative layer for
+   anything it didn't already resolve.
+3. **Risk-score fallback** (`gateway/policy/risk.py`) -- for everything not
    already covered by a hard rule, a weighted score combines action
    severity, data classification, record volume, destination, and live
    security findings (DLP hits, prompt-injection indicators, behavioral
@@ -139,6 +149,33 @@ A `HUMAN_APPROVAL` decision does not execute anything. It's parked in
 after an authorized human calls `POST /v1/approvals/{id}/decision`. The
 gateway enforces this by construction -- the demo agent only invokes the
 tool on an `ALLOW` response, never on `HUMAN_APPROVAL`.
+
+## Shared state and durability
+
+Two components hold state across requests, and both have an in-memory
+implementation (correct for exactly one process) and a shared-backend
+implementation (correct for a fleet), selected automatically by whether an
+environment variable is set -- there's no separate "production mode" to
+remember to configure:
+
+- **Anomaly tracking** (`gateway/security/anomaly.py`) -- `AnomalyTracker`
+  (in-memory, `collections.deque`) or `RedisAnomalyTracker` (Redis sorted
+  sets, score = timestamp) when `REDIS_URL` is set. Without this, an
+  attacker spread across two gateway replicas looks like two separate,
+  under-threshold callers to each -- the whole point of a sliding-window
+  detector breaks under horizontal scaling unless the window is shared.
+- **Approval queue** (`gateway/approvals/manager.py`) -- `ApprovalManager`
+  (in-memory dict) or `RedisApprovalManager` (JSON records + a Redis set
+  for the pending index) when `REDIS_URL` is set. Without this, an approval
+  created on instance A is invisible to a human trying to resolve it
+  against instance B.
+- **Durable audit trail** (`gateway/audit/postgres_store.py`) -- when
+  `DATABASE_URL` is set, every decision is dual-written to a Postgres
+  `decisions` table alongside the JSON log. Deliberately best-effort: a
+  Postgres outage logs a warning and the request still completes, because
+  the JSON log -- not this table -- is the audit-of-record. This exists so
+  "how many DENYs did billing-agent get this week" is a SQL query instead
+  of a script that parses a log file.
 
 ## Observability
 
@@ -171,14 +208,43 @@ causing damage? That's Agent IAM and zero-trust, not content filtering.
 
 What's here is deliberately a working, testable core, not a finished
 product. Ranked roughly by how much it would change the story if you
-picked one to build next:
+picked one to build next.
 
-### Identity & auth
+### Done
+
+These were roadmap items in an earlier revision of this doc; they're real,
+running code now, not just described here:
+
+- **Policy-as-code via OPA/Rego** -- see the Policy engine section above.
+  Independently unit-tested (`opa test`), CI-verified against a live OPA
+  container, with an automatic local-YAML fallback so the zero-infra
+  quickstart still works.
+- **Redis-backed shared state** for the anomaly tracker and approval
+  queue -- see Shared state and durability above.
+- **Postgres-backed durable audit trail** -- dual-written alongside the
+  JSON log, additive and best-effort.
+- **Standards mapping** -- [docs/COMPLIANCE_MAPPING.md](COMPLIANCE_MAPPING.md)
+  maps AegisAI's actual controls (and gaps) against the OWASP LLM Top 10
+  and NIST AI RMF.
+
+Deliberately *not* attempted, and why: **Kafka/NATS event bus** was
+considered alongside Redis/Postgres but would have been redundant with
+them for this project's scope -- Postgres already makes the audit trail
+queryable and Redis already makes state shared; an event bus earns its
+complexity once there are multiple independent downstream consumers, which
+this project doesn't have yet. **gVisor/Firecracker sandboxing** and
+**eBPF/Falco monitoring** need kernel-level primitives (KVM, a Linux host)
+that aren't available under Docker Desktop on Windows, so building them
+here would mean untested, unverifiable code -- worse than not building
+them. They stay below as real next steps, not abandoned ideas.
+
+### Identity & auth -- the highest-leverage remaining gap
 - **SPIFFE/SPIRE workload identity** instead of static bearer-key hashes --
   short-lived, automatically-rotated X.509 SVIDs per agent process, the
-  standard primitive for zero-trust service-to-service auth. This is the
-  single highest-leverage upgrade: it turns "a secret the agent holds" into
-  "a cryptographic identity the platform issues and revokes."
+  standard primitive for zero-trust service-to-service auth. This turns "a
+  secret the agent holds" into "a cryptographic identity the platform
+  issues and revokes," and is the single biggest thing left undone in this
+  project.
 - Watch the **emerging "agent identity" standards** space -- it's forming
   right now: Microsoft Entra Agent ID, Okta/Auth0 cross-app access for
   GenAI, the IETF WIMSE (Workload Identity in Multi-System Environments)
@@ -186,16 +252,6 @@ picked one to build next:
   understand where the industry is headed, not just where it is.
 - mTLS between the agent runtime and the gateway as a lower-effort
   intermediate step before a full workload-identity system.
-
-### Policy engine
-- **Open Policy Agent (OPA) / Rego**, or **AWS Cedar**, or **Oso**, in
-  place of the hand-rolled YAML rule DSL. All three are purpose-built,
-  battle-tested policy languages with unit-testing tooling, a conformance
-  suite, and (for Rego) a WASM compile target -- meaning the same policy
-  bundle could run centrally in the gateway *and* as a low-latency local
-  pre-check embedded in the agent runtime, with the gateway as the
-  authoritative fallback. This is the same edge+central pattern Envoy +
-  OPA uses in a service mesh.
 
 ### Protocol-level integration
 - Wrap **real MCP (Model Context Protocol) servers** so the gateway
@@ -214,31 +270,18 @@ picked one to build next:
   payload risk) behind the same `scan(text) -> (hits, score)` contract, or
   a guardrails framework (NeMo Guardrails, Llama Guard).
 
-### State, scale, and durability
-- Redis for the `AnomalyTracker` and `ApprovalManager` once the gateway
-  runs as more than one replica -- both are in-memory singletons today,
-  correct for a single instance, wrong for a fleet.
-- Postgres for a durable, queryable audit trail (dual-written alongside the
-  JSON log) so approvals and analytics don't depend on tailing a file.
-- An event bus (Kafka/NATS) publishing every decision, so a SIEM, an
-  analytics pipeline, and a live dashboard all subscribe independently
-  instead of each tailing the same log.
-
 ### Defense in depth beyond the decision
 - Execute tool calls that get an `ALLOW` inside an isolated sandbox
   (gVisor, Firecracker microVMs, or WASM) so a bug in a tool's own
   implementation can't itself become an escalation path -- the gateway's
   decision shouldn't be the only thing standing between an agent and
-  damage.
+  damage. Needs a Linux host with the right kernel primitives -- not
+  buildable under Docker Desktop on Windows, which is why it's still on
+  the roadmap instead of in the codebase.
 - eBPF-based runtime monitoring (e.g., Falco) as an OS-level layer beneath
   the application-level gateway, for the case where an agent gets to
-  execute code directly rather than going through a tool call.
-
-### Standards alignment
-- Map AegisAI's controls against the **OWASP Agentic AI / LLM Top 10**
-  (excessive agency, tool poisoning, insecure output handling, etc.) and
-  the **NIST AI RMF**. A short compliance-mapping doc is cheap to write and
-  signals you're building against a known threat model, not just intuition.
+  execute code directly rather than going through a tool call. Same
+  host-platform constraint as above.
 
 None of this changes what's already here -- the current gateway, tests, and
 demo stand on their own. This section is a map of what "production-hardened"

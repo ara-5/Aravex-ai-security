@@ -3,12 +3,44 @@ services:
     build: .
     ports:
       - "8000:8000"
+    environment:
+      - OPA_URL=http://opa:8181
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://aegisai:aegisai@postgres:5432/aegisai
     volumes:
       - ./logs:/app/logs
       # Locally-generated, gitignored credential hashes (see
       # scripts/generate_agent_keys.py) -- mounted live so a key rotation
       # takes effect without a rebuild.
       - ./gateway/identity/agent_credentials.yaml:/app/gateway/identity/agent_credentials.yaml:ro
+    depends_on:
+      - opa
+      - redis
+      - postgres
+
+  opa:
+    image: openpolicyagent/opa:latest
+    command: ["run", "--server", "--addr", "0.0.0.0:8181", "/policy"]
+    ports:
+      - "8181:8181"
+    volumes:
+      - ./gateway/policy/rego:/policy:ro
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=aegisai
+      - POSTGRES_PASSWORD=aegisai
+      - POSTGRES_DB=aegisai
+    volumes:
+      - aegisai-postgres-data:/var/lib/postgresql/data
 
   prometheus:
     image: prom/prometheus:latest
@@ -32,3 +64,6 @@ services:
       - ./grafana/dashboards:/var/lib/grafana/dashboards
     depends_on:
       - prometheus
+
+volumes:
+  aegisai-postgres-data:

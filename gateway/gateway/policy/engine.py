@@ -6,8 +6,11 @@ data, what's the risk, and finally ALLOW / DENY / HUMAN_APPROVAL.
 
 Evaluation order:
   1. Resolve identity chain (agent must exist, tool must be authorized for it).
-  2. Evaluate explicit declarative rules (rules.yaml) -- first match wins and
-     short-circuits everything below. These are hard guardrails.
+  2. Evaluate explicit declarative rules -- a real OPA server (Rego policy in
+     gateway/policy/rego/) when OPA_URL is configured, otherwise the local
+     YAML rule matcher (rules.yaml) as a zero-infrastructure fallback. First
+     match wins and short-circuits everything below -- these are hard
+     guardrails.
   3. IAM permission check (does the agent's permission grant cover this
      resource + action).
   4. Run DLP / prompt-injection / anomaly detectors, fold their scores into
@@ -19,6 +22,7 @@ decision is always explainable, never a black box.
 """
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,10 +31,13 @@ import yaml
 
 from gateway.identity.registry import IdentityRegistry, registry as default_registry
 from gateway.models import ActionRequest, Decision, PolicyDecision, SecurityFinding
+from gateway.policy import opa_client
 from gateway.policy import risk as risk_module
 from gateway.security import anomaly as anomaly_module
 from gateway.security import dlp as dlp_module
 from gateway.security import prompt_injection as injection_module
+
+_log = logging.getLogger("aegisai.policy_engine")
 
 DEFAULT_RULES_PATH = Path(__file__).parent / "rules.yaml"
 
@@ -122,6 +129,39 @@ class PolicyEngine:
             findings=findings or [],
         )
 
+    def _opa_input(self, request: ActionRequest) -> dict:
+        return {
+            "agent_id": request.agent_id,
+            "action": request.action,
+            "resource": request.resource,
+            "record_count": request.record_count,
+            "data_classification": request.data_classification.value,
+            "destination": request.destination,
+        }
+
+    def _evaluate_declarative_rules(self, request: ActionRequest) -> tuple[str, list[str], list[str]] | None:
+        """Returns (decision, matched_rule_names, reasons) if a hard rule
+        matched, else None -- meaning fall through to the risk-score
+        threshold. Tries OPA first when configured; any failure there
+        (unreachable, timeout, malformed response) falls back to the local
+        YAML rule matcher rather than failing the request."""
+        if opa_client.is_configured():
+            try:
+                result = opa_client.evaluate(self._opa_input(request))
+                decision = result.get("decision", "NONE")
+                if decision in ("DENY", "HUMAN_APPROVAL"):
+                    matched = sorted(result.get("matched_rules", []))
+                    reasons = [f"[opa] {r}" for r in sorted(result.get("reasons", []))]
+                    return decision, matched, reasons
+                return None
+            except opa_client.OPAUnavailable as exc:
+                _log.warning("OPA unreachable (%s), falling back to local rules.yaml", exc)
+
+        for rule in self.rules:
+            if rule.matches(request):
+                return rule.then, [rule.name], [f"rule '{rule.name}': {rule.reason}"]
+        return None
+
     def evaluate(self, request: ActionRequest) -> PolicyDecision:
         self.anomaly_tracker.record_call(request.agent_id)
 
@@ -142,14 +182,10 @@ class PolicyEngine:
             )
 
         # 2. Explicit declarative rules (hard guardrails, first match wins)
-        for rule in self.rules:
-            if rule.matches(request):
-                return self._decision(
-                    request,
-                    Decision(rule.then),
-                    [f"rule '{rule.name}': {rule.reason}"],
-                    matched_rules=[rule.name],
-                )
+        rule_result = self._evaluate_declarative_rules(request)
+        if rule_result is not None:
+            decision_str, matched_rules, reasons = rule_result
+            return self._decision(request, Decision(decision_str), reasons, matched_rules=matched_rules)
 
         # 3. IAM permission check
         if not self.registry.has_permission(agent, request.resource, request.action):

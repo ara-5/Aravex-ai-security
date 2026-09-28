@@ -42,13 +42,23 @@ DENY / HUMAN_APPROVAL**.
   is rejected.
 - **Agent IAM** (`gateway/identity/`) -- Human -> Agent -> Tool identity
   chain with per-resource permission grants (`agents.yaml`).
-- **Security Policy Engine** (`gateway/policy/`) -- declarative rules
-  (`rules.yaml`) plus a composite risk-scoring fallback.
+- **Security Policy Engine** (`gateway/policy/`) -- real policy-as-code:
+  declarative guardrails as Rego, evaluated by a live **OPA** server
+  (`gateway/policy/rego/`, independently testable with `opa test`), plus a
+  composite risk-scoring fallback. No OPA running? It falls back to an
+  equivalent local YAML rule matcher automatically -- see
+  [Two ways to run it](#two-ways-to-run-it) below.
 - **Runtime detectors** (`gateway/security/`) -- DLP, prompt-injection
   heuristics, behavioral anomaly detection (call-rate, repeated denials --
   including repeated *authentication* failures).
 - **Human-approval workflow** (`gateway/approvals/`) -- `HUMAN_APPROVAL`
   actions are parked, not executed, until a human resolves them.
+- **Shared, multi-instance-safe state** -- the anomaly tracker and approval
+  queue are backed by **Redis** when `REDIS_URL` is set (in-memory
+  otherwise), so a fleet of gateway replicas shares one view of both.
+- **Durable, queryable audit trail** -- every decision is dual-written to
+  **Postgres** when `DATABASE_URL` is set, alongside the JSON log that stays
+  the audit-of-record.
 - **Observability** (`gateway/audit/`, `gateway/telemetry/`) -- structured
   JSON audit log (SIEM-ready), OpenTelemetry tracing, Prometheus metrics,
   an auto-provisioned Grafana dashboard.
@@ -56,6 +66,24 @@ DENY / HUMAN_APPROVAL**.
   is wired into.
 - **Demo agent + tools** (`agent/`) -- a small agent runtime that calls the
   gateway before ever touching a (simulated) tool.
+- **[Compliance mapping](docs/COMPLIANCE_MAPPING.md)** against the OWASP
+  LLM Top 10 and NIST AI RMF -- including an honest list of what's *not*
+  covered.
+
+## Two ways to run it
+
+**Zero-infrastructure** -- `uvicorn` alone. Declarative rules run through
+the local YAML matcher, anomaly/approval state is in-memory, and the audit
+trail is just the JSON log. This is the fastest path and what the Quickstart
+below uses.
+
+**Production-shaped** -- `docker compose up` (further down). The exact same
+code path now runs against a real OPA server, shared Redis state, and a
+durable Postgres audit trail, because the gateway detects `OPA_URL` /
+`REDIS_URL` / `DATABASE_URL` and switches backends automatically -- no code
+or config changes, no separate branch. That switch is itself the point: the
+simple path and the production path are provably the same system, not two
+different demos.
 
 ## Quickstart
 
@@ -94,14 +122,23 @@ Then check:
 - `http://127.0.0.1:8000/v1/approvals` -- pending human-approval queue
 - `http://127.0.0.1:8000/v1/agents` -- the registered agent identities and their permissions
 
-## Run the full stack (gateway + Prometheus + Grafana)
+## Run the full stack (gateway + OPA + Redis + Postgres + Prometheus + Grafana)
 
 ```bash
 python scripts/generate_agent_keys.py   # required before first `up`
 docker compose up --build
 ```
 
+Six services come up: the gateway; a real **OPA** server loaded with
+`gateway/policy/rego/guardrails.rego`; **Redis** for shared anomaly/approval
+state; **Postgres** for the durable audit trail; **Prometheus**; and
+**Grafana**. The gateway's env (`OPA_URL`, `REDIS_URL`, `DATABASE_URL`) is
+already wired to all three in `docker-compose.yml`.
+
 - Gateway: http://localhost:8000
+- OPA: http://localhost:8181 -- query it directly, e.g.
+  `curl -X POST localhost:8181/v1/data/aegisai/guardrails/result -d '{"input": {...}}'`
+- Postgres: `localhost:5432` (`aegisai`/`aegisai`) -- `SELECT decision, count(*) FROM decisions GROUP BY decision;`
 - Prometheus: http://localhost:9090
 - Grafana: http://localhost:3000 -- the Prometheus data source and the
   **AegisAI — Zero-Trust Gateway Overview** dashboard are both auto-provisioned
@@ -112,7 +149,9 @@ docker compose up --build
   as admin/admin to edit.
 
   Run `python scripts\demo.py` (or hit the gateway however you like) while the
-  stack is up and the dashboard fills in live.
+  stack is up and the dashboard fills in live. Decisions in this mode carry a
+  `[opa]` prefix in their `reasons`, confirming OPA -- not the local fallback
+  -- made the call.
 
 ## Tests
 
@@ -120,9 +159,22 @@ docker compose up --build
 pytest
 ```
 
-24 tests: the policy engine directly (deterministic, no server needed), risk
-scoring, and the HTTP layer -- including authentication -- via FastAPI's
-`TestClient`. Runs in CI on every push (see badge above).
+24 tests always run (policy engine, risk scoring, HTTP layer including
+authentication -- all against the zero-infrastructure fallback paths, no
+external services needed). 9 more are live integration tests against OPA,
+Redis, and Postgres, and skip automatically unless `OPA_URL` / `REDIS_URL`
+/ `DATABASE_URL` are set:
+
+```bash
+# with the docker-compose stack (or standalone containers) running:
+OPA_URL=http://localhost:8181 REDIS_URL=redis://localhost:6379/0 \
+  DATABASE_URL=postgresql://aegisai:aegisai@localhost:5432/aegisai \
+  pytest -q
+```
+
+CI runs the suite twice on every push -- once with no services configured,
+once with real OPA/Redis/Postgres containers -- so both paths are actually
+verified, not just the fallback (see badge above, and `.github/workflows/ci.yml`).
 
 ## Try your own policy
 
@@ -142,16 +194,18 @@ Or register a new agent with scoped permissions in
 
 ## Extending toward production
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#roadmap--future-proofing)
-for a longer brainstorm, but the short list:
+Already done: policy-as-code via real OPA, Redis-backed shared state, and a
+durable Postgres audit trail (all above). See
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#roadmap--future-proofing) for
+the longer brainstorm; what's deliberately still open:
 
-- Swap the in-memory `ApprovalManager` / `AnomalyTracker` for a shared store
-  (Postgres/Redis) once the gateway runs as more than one instance.
 - Replace bearer-key auth with mTLS or SPIFFE/SPIRE workload identity for
-  cryptographic, short-lived, auto-rotated agent credentials.
+  cryptographic, short-lived, auto-rotated agent credentials -- the highest-
+  leverage remaining gap.
 - Point `OTEL_EXPORTER_OTLP_ENDPOINT` at a real collector (Jaeger/Tempo).
 - Ship `logs/audit.log` to your SIEM (Splunk/Elastic) via its standard
   log-forwarding agent -- the JSON schema is already flat and queryable.
 - Replace the regex-based DLP/prompt-injection detectors with a classifier,
   Presidio, or an LLM-judge model behind the same `scan(text) -> (hits,
   score)` contract.
+- Wrap real MCP servers instead of the simulated tools in `agent/tools/`.
