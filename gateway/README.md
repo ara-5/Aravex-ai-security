@@ -1,6 +1,10 @@
 # AegisAI -- Runtime Security Gateway for Autonomous AI Agents
 
 [![CI](https://github.com/ara-5/AI-Runtime-Security-Zero-Trust-Agent-Platform/actions/workflows/ci.yml/badge.svg)](https://github.com/ara-5/AI-Runtime-Security-Zero-Trust-Agent-Platform/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](requirements.txt)
+[![OPA](https://img.shields.io/badge/policy--engine-OPA%2FRego-7d9fff.svg)](gateway/policy/rego/guardrails.rego)
+[![Docker Compose](https://img.shields.io/badge/docker--compose-ready-2496ED.svg)](docker-compose.yml)
 
 A zero-trust security layer that sits between AI agents and everything they
 can touch (databases, tools, external APIs), so that a compromised or
@@ -33,6 +37,16 @@ flowchart LR
 For every action: **who's calling** (verified, not claimed)? Which agent?
 What permissions? What resource? What data? What's the risk? -> **ALLOW /
 DENY / HUMAN_APPROVAL**.
+
+**Contents:** [What's here](#whats-here) &middot;
+[Two ways to run it](#two-ways-to-run-it) &middot;
+[Quickstart](#quickstart) &middot;
+[Full stack](#run-the-full-stack-gateway--opa--redis--postgres--prometheus--grafana) &middot;
+[Tests](#tests) &middot;
+[Try your own policy](#try-your-own-policy) &middot;
+[Extending toward production](#extending-toward-production) &middot;
+[Architecture](docs/ARCHITECTURE.md) &middot;
+[Compliance mapping](docs/COMPLIANCE_MAPPING.md)
 
 ## What's here
 
