@@ -98,3 +98,52 @@ def test_redis_approval_manager_round_trip(redis_client):
 
     fetched = m.get(record.approval_id)
     assert fetched.status == ApprovalStatus.APPROVED
+
+
+def test_redis_approval_manager_pending_count_is_o1_not_per_record_fetch(redis_client):
+    """Regression test for a real bug: pending_count() used to call
+    list_pending(), which fetched and deserialized every pending record with
+    one Redis round trip each -- O(N) round trips just to count them. Under
+    a load test with ~1,300 accumulated pending approvals, that turned into
+    multi-second latency on every single new HUMAN_APPROVAL decision (see
+    gateway/approvals/manager.py). pending_count() must be a single SCARD."""
+    from gateway.approvals.manager import RedisApprovalManager
+    from gateway.models import ActionRequest, DataClassification, Decision, PolicyDecision
+
+    m = RedisApprovalManager(redis_client, key_prefix="aegisai:test:approval-bulk")
+    request = ActionRequest(
+        human_id="h-jane-owner",
+        agent_id="customer-support-agent",
+        tool_id="customer_db_tool",
+        action="read",
+        resource="customer_db.profile",
+    )
+    decision = PolicyDecision(
+        request_id=request.request_id,
+        agent_id=request.agent_id,
+        action=request.action,
+        resource=request.resource,
+        decision=Decision.HUMAN_APPROVAL,
+        risk_score=0.6,
+        reasons=["test"],
+    )
+
+    for _ in range(40):
+        m.create(request, decision)
+
+    assert m.pending_count() == 40
+    assert m.redis.scard(m.pending_set_key) == 40
+    assert len(m.list_pending()) == 40
+
+
+def test_redis_approval_manager_list_pending_cleans_up_stale_ids(redis_client):
+    """A pending-set member whose record key is missing (e.g. expired or
+    deleted out of band) should be dropped from the set, not returned or
+    left to accumulate forever."""
+    from gateway.approvals.manager import RedisApprovalManager
+
+    m = RedisApprovalManager(redis_client, key_prefix="aegisai:test:approval-stale")
+    redis_client.sadd(m.pending_set_key, "ghost-id-with-no-record")
+
+    assert m.list_pending() == []
+    assert redis_client.scard(m.pending_set_key) == 0

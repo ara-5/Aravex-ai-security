@@ -226,6 +226,15 @@ running code now, not just described here:
 - **Standards mapping** -- [docs/COMPLIANCE_MAPPING.md](COMPLIANCE_MAPPING.md)
   maps AegisAI's actual controls (and gaps) against the OWASP LLM Top 10
   and NIST AI RMF.
+- **A real load-test benchmark** (`scripts/loadtest.py`) that found and
+  fixed two genuine concurrency bugs -- an unpooled OPA HTTP client, an
+  unpooled Postgres connection, and (the significant one) an O(N)
+  Redis-backed `pending_count()` that fetched every pending approval just
+  to count them, turning into multi-second p50 latency once real approval
+  volume accumulated. See the README's Performance section for the full
+  before/after and root-cause writeup. CI now runs this as a smoke test on
+  every push, so a regression here fails the build, not just a manual
+  spot-check.
 
 Deliberately *not* attempted, and why: **Kafka/NATS event bus** was
 considered alongside Redis/Postgres but would have been redundant with

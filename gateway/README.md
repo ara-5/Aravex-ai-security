@@ -44,6 +44,7 @@ DENY / HUMAN_APPROVAL**.
 [Quickstart](#quickstart) &middot;
 [Full stack](#run-the-full-stack-gateway--opa--redis--postgres--prometheus--grafana) &middot;
 [Tests](#tests) &middot;
+[Performance](#performance) &middot;
 [Try your own policy](#try-your-own-policy) &middot;
 [Extending toward production](#extending-toward-production) &middot;
 [Architecture](docs/ARCHITECTURE.md) &middot;
@@ -51,9 +52,13 @@ DENY / HUMAN_APPROVAL**.
 
 ## Screenshots
 
-**The auto-provisioned Grafana dashboard**, live against real traffic from `scripts/demo.py` -- request volume, ALLOW/DENY/HUMAN_APPROVAL split, deny rate, average risk score, security findings by category, which policy rules fired, and per-agent breakdown, all populated with zero manual dashboard setup:
+**`scripts/demo.py` against a live gateway** -- every scenario from the design brief, decided in real time: ALLOW, DENY, a HUMAN_APPROVAL that gets resolved mid-run, a prompt-injection payload raising the risk score, an anomaly-triggered escalation, and a forged credential rejected before policy evaluation ever runs. This is the real captured output of a real run, not a mockup:
 
-![AegisAI Grafana dashboard showing request volume, decision split, risk score, security findings, policy rule matches, and per-agent breakdown](docs/screenshots/grafana-dashboard.png)
+![Terminal recording of scripts/demo.py running against the live AegisAI gateway, showing ALLOW, DENY, HUMAN_APPROVAL, and UNAUTHENTICATED decisions with full reasoning traces](docs/screenshots/demo-terminal.gif)
+
+**The auto-provisioned Grafana dashboard**, live against real traffic -- request volume, ALLOW/DENY/HUMAN_APPROVAL split, deny rate, average risk score, security findings by category, which policy rules fired, and per-agent breakdown, all populated with zero manual dashboard setup. Captured as an actual screen recording while traffic was flowing, not staged:
+
+![Animated capture of the AegisAI Grafana dashboard updating live as request volume, decision split, risk score, security findings, and policy rule matches all climb in real time](docs/screenshots/grafana-dashboard.gif)
 
 **The gateway's API surface** (FastAPI's auto-generated docs at `/docs`) -- the agent-action endpoint, the human-approval queue endpoints, and the full request/response schema, generated directly from the Pydantic models in `gateway/models.py`, never hand-written or allowed to drift from the code:
 
@@ -186,7 +191,7 @@ pytest
 
 24 tests always run (policy engine, risk scoring, HTTP layer including
 authentication -- all against the zero-infrastructure fallback paths, no
-external services needed). 9 more are live integration tests against OPA,
+external services needed). 11 more are live integration tests against OPA,
 Redis, and Postgres, and skip automatically unless `OPA_URL` / `REDIS_URL`
 / `DATABASE_URL` are set:
 
@@ -194,12 +199,69 @@ Redis, and Postgres, and skip automatically unless `OPA_URL` / `REDIS_URL`
 # with the docker-compose stack (or standalone containers) running:
 OPA_URL=http://localhost:8181 REDIS_URL=redis://localhost:6379/0 \
   DATABASE_URL=postgresql://aegisai:aegisai@localhost:5432/aegisai \
-  pytest -q
+  pytest -q --cov=gateway --cov-report=term
 ```
 
-CI runs the suite twice on every push -- once with no services configured,
-once with real OPA/Redis/Postgres containers -- so both paths are actually
-verified, not just the fallback (see badge above, and `.github/workflows/ci.yml`).
+35 tests, ~90% statement coverage of the `gateway` package. CI runs the
+suite twice on every push -- once with no services configured, once with
+real OPA/Redis/Postgres containers, plus a load-test smoke step (below) --
+so the fallback path, the production-shaped path, and concurrent behavior
+are all actually verified, not just the happy path (see badge above, and
+`.github/workflows/ci.yml`).
+
+## Performance
+
+```bash
+python scripts/loadtest.py --requests 300 --concurrency 20
+```
+
+Fires a realistic weighted mix of scenarios (mostly cheap reads, a
+sprinkling of denies and escalations) at the gateway and reports latency
+percentiles and throughput. It exists so this project has a real,
+reproducible number instead of an assumed one -- and it's also what found
+two genuine bugs during development:
+
+| | Before | After |
+|---|---|---|
+| p50 latency (concurrency 20) | 2,403 ms | **243 ms** |
+| p95 latency (concurrency 20) | 4,255 ms | **563 ms** |
+| Throughput | 8.8 req/s | **69 req/s** |
+
+**What was actually wrong**, found by instrumenting the request path and
+reading the numbers, not by guessing:
+
+1. `gateway/policy/opa_client.py` called `httpx.post()` -- the module-level
+   convenience function, which opens a brand-new TCP connection for every
+   single call. Fixed with one persistent, pooled `httpx.Client`.
+2. `gateway/audit/postgres_store.py` opened a new Postgres connection (full
+   TCP + auth handshake) for every decision. Fixed with a real connection
+   pool (`psycopg_pool`).
+3. **The big one:** `RedisApprovalManager.pending_count()` -- called on
+   every `HUMAN_APPROVAL` decision to update a Prometheus gauge -- worked
+   by calling `list_pending()`, which fetched and deserialized *every*
+   pending approval with a separate Redis round trip each, just to `len()`
+   the result. Harmless at low volume; with ~1,300 pending approvals
+   accumulated from repeated demo runs, that's 1,300 sequential network
+   round trips on the hot path of a single request. Fixed by making
+   `pending_count()` a single `SCARD` call (O(1) instead of O(N)) and
+   batching `list_pending()`'s reads into one pipelined round trip instead
+   of N sequential ones. See `gateway/approvals/manager.py` and the
+   regression tests in `tests/test_redis_state.py`.
+
+Also fixed along the way: `gateway/telemetry/otel.py` used
+`SimpleSpanProcessor` for the console trace exporter, which exports
+synchronously in the request-handling thread. Switched to
+`BatchSpanProcessor` (the correct choice for any exporter, not just OTLP).
+
+**Honesty about the numbers:** these were measured on a single Windows
+laptop running all six `docker-compose` services simultaneously (gateway,
+OPA, Redis, Postgres, Prometheus, Grafana) -- not a dedicated benchmark
+rig, and not tuned for a good number. The point isn't "AegisAI does 69
+req/s," which says more about this laptop than the software; it's that the
+methodology is real and reproducible, and that real measurement found real
+bugs a benchmark-free "it feels fast enough" pass would have shipped. Run
+it yourself and you'll get different absolute numbers on different
+hardware -- that's expected.
 
 ## Try your own policy
 

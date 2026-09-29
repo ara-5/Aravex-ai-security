@@ -99,17 +99,51 @@ class RedisApprovalManager:
         return ApprovalRecord.model_validate_json(raw)
 
     def list_pending(self) -> list[ApprovalRecord]:
-        records = []
-        for approval_id in self.redis.smembers(self.pending_set_key):
-            record = self.get(approval_id)
-            if record is not None and record.status == ApprovalStatus.PENDING:
+        """Batched, not one GET per pending approval.
+
+        The first version of this method called self.get() -- a separate
+        Redis round trip -- once per id in the pending set, in a Python
+        for-loop. Fine at a handful of pending approvals; a genuine O(N)
+        latency problem once the set grows, since every call to this method
+        (including the one create() makes just to update the Prometheus
+        gauge -- see pending_count() below) paid N round trips. A load test
+        with ~1,300 accumulated pending approvals from repeated demo runs
+        turned that into multi-second latency on every single new
+        HUMAN_APPROVAL decision. Fixed by pipelining every GET into one
+        round trip regardless of N.
+        """
+        approval_ids = list(self.redis.smembers(self.pending_set_key))
+        if not approval_ids:
+            return []
+
+        pipe = self.redis.pipeline()
+        for approval_id in approval_ids:
+            pipe.get(self._record_key(approval_id))
+        raw_records = pipe.execute()
+
+        records: list[ApprovalRecord] = []
+        stale_ids: list[str] = []
+        for approval_id, raw in zip(approval_ids, raw_records):
+            if raw is None:
+                stale_ids.append(approval_id)
+                continue
+            record = ApprovalRecord.model_validate_json(raw)
+            if record.status == ApprovalStatus.PENDING:
                 records.append(record)
             else:
-                self.redis.srem(self.pending_set_key, approval_id)
+                stale_ids.append(approval_id)
+
+        if stale_ids:
+            self.redis.srem(self.pending_set_key, *stale_ids)
+
         return records
 
     def pending_count(self) -> int:
-        return len(self.list_pending())
+        """O(1): the size of the pending set, not "fetch and deserialize
+        every pending record just to count them" -- pending_count() is
+        called on every decision (to update a Prometheus gauge), so it's
+        the single hottest path list_pending()'s old cost hit."""
+        return self.redis.scard(self.pending_set_key)
 
     def resolve(self, approval_id: str, approver: str, approved: bool) -> Optional[ApprovalRecord]:
         record = self.get(approval_id)

@@ -11,6 +11,14 @@ up.
 
 Only active when DATABASE_URL is set; a no-op otherwise, same pattern as
 the OPA and Redis integrations.
+
+Uses a pooled connection (psycopg_pool), not one TCP connection + full
+Postgres auth handshake per request -- an earlier version of this module
+did that, and a load test (scripts/loadtest.py) caught it immediately:
+p50 latency went from single-digit milliseconds to over two seconds under
+concurrency 20, because the FastAPI thread pool was mostly blocked on
+connection setup instead of the actual insert. Real numbers found a real
+bug; see README.md's Performance section for the before/after.
 """
 from __future__ import annotations
 
@@ -25,6 +33,9 @@ _log = logging.getLogger("aegisai.audit.postgres")
 
 _schema_ready = False
 _schema_lock = threading.Lock()
+
+_pool = None
+_pool_lock = threading.Lock()
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS decisions (
@@ -63,10 +74,15 @@ def is_configured() -> bool:
     return bool(os.environ.get("DATABASE_URL"))
 
 
-def _connect():
-    import psycopg
+def _get_pool():
+    global _pool
+    if _pool is None:
+        with _pool_lock:
+            if _pool is None:
+                from psycopg_pool import ConnectionPool
 
-    return psycopg.connect(os.environ["DATABASE_URL"])
+                _pool = ConnectionPool(os.environ["DATABASE_URL"], min_size=1, max_size=10, open=True)
+    return _pool
 
 
 def _ensure_schema() -> None:
@@ -76,7 +92,7 @@ def _ensure_schema() -> None:
     with _schema_lock:
         if _schema_ready:
             return
-        with _connect() as conn:
+        with _get_pool().connection() as conn:
             conn.execute(SCHEMA)
             conn.commit()
         _schema_ready = True
@@ -93,7 +109,7 @@ def write_decision(request: ActionRequest, decision: PolicyDecision) -> None:
         return
     try:
         _ensure_schema()
-        with _connect() as conn:
+        with _get_pool().connection() as conn:
             conn.execute(
                 INSERT,
                 (

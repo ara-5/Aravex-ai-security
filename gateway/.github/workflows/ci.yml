@@ -71,9 +71,19 @@ jobs:
       - name: Run tests (zero-infrastructure fallback paths)
         run: pytest -q
 
-      - name: Run tests against OPA + Redis + Postgres
+      - name: Run tests against OPA + Redis + Postgres (with coverage)
         env:
           OPA_URL: http://localhost:8181
           REDIS_URL: redis://localhost:6379/0
           DATABASE_URL: postgresql://aegisai:aegisai@localhost:5432/aegisai
-        run: pytest -q
+        run: pytest -q --cov=gateway --cov-report=term
+
+      - name: Load test (smoke -- fails the build if the gateway can't take concurrent traffic)
+        env:
+          OPA_URL: http://localhost:8181
+          REDIS_URL: redis://localhost:6379/0
+          DATABASE_URL: postgresql://aegisai:aegisai@localhost:5432/aegisai
+        run: |
+          uvicorn gateway.main:app --port 8000 &
+          for i in $(seq 1 15); do curl -sf http://localhost:8000/healthz && break; sleep 1; done
+          python scripts/loadtest.py --requests 150 --concurrency 20
