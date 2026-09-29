@@ -5,14 +5,15 @@ import json
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, BackgroundTasks, Header, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from redteam_engine.config import PORT, CATEGORY_LABELS, REDTEAM_API_KEY
 from redteam_engine.db import init_db, SessionLocal, Campaign, AttackAttempt, Finding
 from redteam_engine.planner import AttackPlanner
-from redteam_engine.scorecard import compute_scorecard
+from redteam_engine.report import generate_security_report_markdown
+from redteam_engine.scorecard import compute_scorecard, get_score_history
 from redteam_engine.regression import run_regression, run_all_regressions
 from redteam_engine.target_client import TargetClient
 
@@ -115,6 +116,11 @@ def scorecard():
     return compute_scorecard()
 
 
+@app.get("/scorecard/history")
+def scorecard_history(limit: int = 200):
+    return get_score_history(limit=limit)
+
+
 @app.get("/findings")
 def list_findings(status: str | None = None):
     db = SessionLocal()
@@ -164,6 +170,16 @@ def regress_finding(finding_id: int):
 @app.post("/regression/run-all", dependencies=[Depends(require_api_key)])
 def regress_all():
     return {"results": run_all_regressions()}
+
+
+@app.get("/reports/security")
+def security_report(scope: str = "all"):
+    md = generate_security_report_markdown(scope=scope)
+    return PlainTextResponse(
+        md,
+        media_type="text/markdown",
+        headers={"Content-Disposition": "attachment; filename=agentshield-security-report.md"},
+    )
 
 
 if __name__ == "__main__":

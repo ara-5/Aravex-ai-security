@@ -107,6 +107,7 @@
     <div class="controls">
       <button class="primary" id="run-all">Run Full Attack Campaign</button>
       <button id="regress-all">Re-run All Regressions</button>
+      <a id="download-report" href="/reports/security" download><button>Download Security Report</button></a>
       <button id="refresh">Refresh</button>
       <span class="sub" id="last-campaign"></span>
     </div>
@@ -118,6 +119,7 @@
       <div class="overall">
         <div class="num" id="overall-score">–</div>
         <div class="lbl">/ 10 overall</div>
+        <span class="sub" id="score-trend-label" style="margin-left:auto;"></span>
       </div>
       <div id="score-rows"></div>
     </div>
@@ -130,6 +132,11 @@
         <div class="sev-tile"><div class="n" id="sev-low" style="color:var(--low)">0</div><div class="l">Low</div></div>
       </div>
     </div>
+  </div>
+
+  <div class="panel" id="trend-panel" style="display:none;">
+    <h2>Security Posture Over Time</h2>
+    <svg id="trend-chart" viewBox="0 0 600 120" preserveAspectRatio="none" style="width:100%; height:120px; display:block;"></svg>
   </div>
 
   <div class="panel">
@@ -200,6 +207,37 @@ async function refreshScorecard() {
   document.getElementById("sev-low").textContent = sc.severity_counts.low || 0;
 }
 
+async function refreshScoreHistory() {
+  const history = await fetchJSON("/scorecard/history?limit=200");
+  const panel = document.getElementById("trend-panel");
+  const label = document.getElementById("score-trend-label");
+  if (!history.length) { panel.style.display = "none"; label.textContent = ""; return; }
+  panel.style.display = "block";
+
+  const scores = history.map(h => h.overall_score);
+  const first = scores[0], last = scores[scores.length - 1];
+  if (history.length > 1) {
+    const arrow = last > first ? "▲" : last < first ? "▼" : "■";
+    label.textContent = `${arrow} ${first.toFixed(1)} → ${last.toFixed(1)} over ${history.length} snapshots`;
+    label.style.color = last > first ? "var(--good)" : last < first ? "var(--critical)" : "var(--muted)";
+  } else {
+    label.textContent = "1 snapshot so far";
+  }
+
+  const svg = document.getElementById("trend-chart");
+  const W = 600, H = 120, PAD = 8;
+  const n = scores.length;
+  const x = i => n === 1 ? W / 2 : PAD + (i * (W - 2 * PAD)) / (n - 1);
+  const y = s => H - PAD - (Math.max(0, Math.min(10, s)) / 10) * (H - 2 * PAD);
+  const points = scores.map((s, i) => `${x(i)},${y(s)}`).join(" ");
+  const lineColor = last >= first ? "var(--good)" : "var(--critical)";
+
+  svg.innerHTML = `
+    <polyline points="${points}" style="fill:none; stroke:${lineColor}; stroke-width:2.5;" />
+    ${scores.map((s, i) => `<circle cx="${x(i)}" cy="${y(s)}" r="3.5" style="fill:${lineColor}" />`).join("")}
+  `;
+}
+
 let expandedId = null;
 
 async function refreshFindings() {
@@ -265,8 +303,13 @@ async function toggleDetail(id, tr) {
       btn.textContent = "Run Regression Test";
       document.getElementById(`regression-live-${f.id}`).innerHTML =
         `<span class="regression-result ${res.outcome.toLowerCase()}">${res.outcome === "PASS" ? "✅ PASS" : "❌ FAIL"}</span>`;
-      refreshFindings();
+      // Update this row in place rather than calling refreshFindings() --
+      // rebuilding the whole table would collapse the detail panel the
+      // user just expanded, hiding the very result they triggered it to see.
+      tr.children[3].innerHTML = `<span class="pill ${res.status}">${res.status}</span>`;
+      tr.children[4].innerHTML = `<span class="regression-result ${res.outcome.toLowerCase()}">${res.outcome}</span>`;
       refreshScorecard();
+      refreshScoreHistory();
     });
   }
 }
@@ -327,7 +370,7 @@ document.getElementById("regress-all").addEventListener("click", async () => {
 document.getElementById("refresh").addEventListener("click", refreshAll);
 
 async function refreshAll() {
-  await Promise.all([refreshTargetStatus(), refreshScorecard(), refreshFindings()]);
+  await Promise.all([refreshTargetStatus(), refreshScorecard(), refreshFindings(), refreshScoreHistory()]);
 }
 
 refreshAll();

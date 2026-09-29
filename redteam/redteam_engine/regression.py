@@ -17,6 +17,7 @@ import uuid
 from redteam_engine.attacks import FAMILY_BY_CATEGORY
 from redteam_engine.attacks.base import Attack, AttackContext
 from redteam_engine.db import SessionLocal, Finding, now
+from redteam_engine.scorecard import record_snapshot
 from redteam_engine.target_adapter import TargetAdapter
 from redteam_engine.target_client import TargetClient
 
@@ -51,6 +52,7 @@ def run_regression(finding_id: int, client: TargetAdapter | None = None) -> dict
         else:
             finding.status = "regressed" if finding.status == "resolved" else "open"
         db.commit()
+        record_snapshot("regression", finding.id)
 
         return {
             "finding_id": finding.id,

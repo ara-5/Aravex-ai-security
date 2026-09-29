@@ -82,6 +82,21 @@ class Finding(Base):
     created_at = Column(DateTime, default=now)
 
 
+class ScoreSnapshot(Base):
+    """One row per scorecard computation (after every campaign completes,
+    and after every regression run) -- lets the dashboard show security
+    posture *over time*, not just the current instant."""
+
+    __tablename__ = "score_snapshots"
+    id = Column(Integer, primary_key=True)
+    overall_score = Column(Float)
+    rows_json = Column(Text)  # per-category rows, same shape scorecard.py returns
+    severity_counts_json = Column(Text)
+    trigger = Column(String)  # "campaign" | "regression"
+    trigger_ref = Column(String, nullable=True)  # campaign id or finding id, for context
+    created_at = Column(DateTime, default=now)
+
+
 def init_db():
     Base.metadata.create_all(engine)
 

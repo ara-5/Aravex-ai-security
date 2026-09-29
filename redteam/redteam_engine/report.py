@@ -137,3 +137,82 @@ def regression_test_spec(finding_row) -> dict:
         "technique": finding_row.technique,
         "payload": finding_row.attack_payload,
     }
+
+
+_SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+
+
+def generate_security_report_markdown(scope: str = "all") -> str:
+    """Assembles the full Attack -> Evidence -> Impact -> Remediation ->
+    Regression Test report as a standalone Markdown document -- the
+    tangible deliverable a real engagement hands back to a team, not just
+    a dashboard view. `scope` is "all" or "open" (open findings only)."""
+    from datetime import datetime, timezone
+
+    from redteam_engine.db import SessionLocal, Finding
+    from redteam_engine.scorecard import compute_scorecard
+
+    sc = compute_scorecard()
+    db = SessionLocal()
+    try:
+        q = db.query(Finding)
+        if scope == "open":
+            q = q.filter(Finding.status == "open")
+        findings = q.order_by(Finding.id.desc()).all()
+    finally:
+        db.close()
+    findings.sort(key=lambda f: _SEVERITY_ORDER.get(f.severity, 9))
+
+    lines: list[str] = []
+    lines.append("# AgentShield Security Report")
+    lines.append("")
+    lines.append(f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+    lines.append(f"Scope: {'open findings only' if scope == 'open' else 'all findings (including resolved)'}")
+    lines.append("")
+    lines.append("## AI Security Scorecard")
+    lines.append("")
+    lines.append(f"**Overall score: {sc['overall_score']}/10**")
+    lines.append("")
+    lines.append("| Category | Score | Open Findings |")
+    lines.append("|---|---|---|")
+    for row in sc["rows"]:
+        lines.append(f"| {row['row']} | {row['score']}/10 | {row['open_findings']} |")
+    lines.append("")
+    sev = sc["severity_counts"]
+    lines.append(
+        f"**Severity totals** — Critical: {sev.get('critical', 0)} · High: {sev.get('high', 0)} · "
+        f"Medium: {sev.get('medium', 0)} · Low: {sev.get('low', 0)}"
+    )
+    lines.append("")
+
+    if not findings:
+        lines.append("## Findings")
+        lines.append("")
+        lines.append("No findings in scope.")
+        return "\n".join(lines)
+
+    lines.append(f"## Findings ({len(findings)})")
+    lines.append("")
+    for f in findings:
+        lines.append(f"### [{f.severity.upper()}] {f.title} (#{f.id} — {f.status})")
+        lines.append("")
+        lines.append("**Attack**")
+        lines.append("```")
+        lines.append(f.attack_payload or "")
+        lines.append("```")
+        lines.append("")
+        lines.append(f"**Evidence**  \n{f.evidence}")
+        lines.append("")
+        lines.append(f"**Impact**  \n{f.impact}")
+        lines.append("")
+        lines.append(f"**Remediation**  \n{f.remediation}")
+        lines.append("")
+        if f.last_regression_result:
+            lines.append(f"**Regression Test**: {f.last_regression_result} (as of {f.last_regression_at})")
+        else:
+            lines.append("**Regression Test**: not yet run")
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+
+    return "\n".join(lines)

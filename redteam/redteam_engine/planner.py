@@ -28,6 +28,7 @@ from redteam_engine.config import MAX_MUTATIONS_PER_TECHNIQUE, MAX_WORKERS
 from redteam_engine.db import SessionLocal, Campaign, AttackAttempt, Finding, now
 from redteam_engine.llm_judge import get_llm_opinion
 from redteam_engine.report import build_finding_fields
+from redteam_engine.scorecard import record_snapshot
 from redteam_engine.target_adapter import TargetAdapter
 from redteam_engine.target_client import TargetClient
 
@@ -78,6 +79,8 @@ class AttackPlanner:
             db.commit()
         finally:
             db.close()
+
+        record_snapshot("campaign", campaign_id)
         return campaign_id
 
     def _run_technique(self, campaign_id: int, family, seed_attack, ctx: AttackContext):

@@ -12,6 +12,14 @@ them, observes what happened, judges success, mutates the attack, and
 repeats, closing the loop from **Attack → Evidence → Impact → Remediation →
 Regression Test**.
 
+![AgentShield dashboard: a full attack campaign runs, a finding is confirmed, a real fix is applied, and the regression test flips from FAIL to PASS while the security score improves live](docs/screenshots/dashboard-demo.gif)
+
+*Real capture, not a mockup: a full 11-category campaign finds a critical MCP
+credential-exposure vulnerability → the regression test confirms it (❌ FAIL)
+→ a real one-line fix is applied to the target agent → the same regression
+test is re-run from the dashboard and flips to ✅ PASS → the score, severity
+counts, and posture-over-time trend all update live.*
+
 ```
                     ┌─ Prompt Injection
                     ├─ Jailbreak
@@ -152,9 +160,22 @@ pytest tests/ -v
   RAG Security, Memory Security, Tool Security, MCP Security, Data
   Protection, Agent Authorization), computed live from open findings.
 - **Findings by Severity** — Critical / High / Medium / Low counts.
+- **Security Posture Over Time** — a trend line built from a snapshot taken
+  after every campaign and every regression run, so a real fix visibly moves
+  the score, not just the one finding it targeted.
 - **Findings table** — click any row to expand its full **Attack → Evidence
   → Impact → Remediation → Regression Test** report, and run the regression
   test right from the browser.
+- **Download Security Report** — exports every finding in scope as a
+  standalone Markdown report (`redteam_engine/report.py`), the tangible
+  deliverable a real engagement hands back to a team.
+
+<img src="docs/screenshots/02_finding_detail.png" alt="An expanded finding showing its Attack, Evidence, Impact, Remediation, and Regression Test sections" width="820">
+
+<img src="docs/screenshots/05_dashboard_after_fix.png" alt="Dashboard after a real fix: score improved 2.4 to 2.9, MCP Security up from 0.0 to 3.5, and the posture-over-time trend line ticking upward" width="820">
+
+More screenshots (each stage of the campaign → fix → regression flow) are in
+[`docs/screenshots/`](docs/screenshots/).
 
 ## The killer feature: prove a fix actually works
 
@@ -182,6 +203,31 @@ the fix-and-verify loop, wired permanently into the pipeline instead of a
 one-time manual check. (Proven with a temporary local test that pretends
 `mcp_credential_exposure` is fixed while it still isn't — the gate failed
 the build correctly, exactly as it should on a real regression.)
+
+**Security posture over time**: every campaign and every regression run
+persists a `ScoreSnapshot` (`redteam_engine/scorecard.py`,
+`GET /scorecard/history`) — overall score, per-category rows, and severity
+counts, timestamped. The screenshot above is the actual recorded sequence:
+`2.4 → 2.9` overall, MCP Security `0.0 → 3.5`, across 3 snapshots (one
+per campaign/regression), rendered as the dashboard's trend line with no
+charting library — a hand-rolled inline SVG polyline, consistent with the
+rest of the dashboard's zero-dependency, offline-first design.
+
+**Exportable Security Report**: `GET /reports/security` (also a
+"Download Security Report" button on the dashboard) assembles every
+finding in scope into a standalone Markdown document via
+`redteam_engine/report.py`'s `generate_security_report_markdown()` — the
+scorecard, severity totals, and every finding's full Attack → Evidence →
+Impact → Remediation → Regression Test writeup, as a real deliverable
+instead of only a live view.
+
+Capturing the screenshots above (real browser automation via Playwright,
+not mockups) surfaced a real dashboard bug: clicking "Run Regression Test"
+called `refreshFindings()`, which rebuilt the entire table and collapsed
+the very row the user just expanded — hiding the PASS/FAIL result behind
+the click that produced it. Fixed by updating that row in place instead
+of rebuilding the table (`redteam_engine/static/dashboard.html`), verified
+with the same Playwright script before and after.
 
 ## Pluggable everything: LLM, embeddings, target, judge
 

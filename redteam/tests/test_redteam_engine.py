@@ -84,6 +84,28 @@ def test_regression_flips_to_pass_after_a_real_fix():
         mcp._get_service_token = original
 
 
+def test_score_history_and_security_report():
+    _fresh_redteam_db()
+    client = _make_client()
+    client.reset()
+    planner = AttackPlanner(client)
+    planner.run_campaign("test-report", categories=["system_prompt_extraction"])
+
+    from redteam_engine.scorecard import get_score_history
+    from redteam_engine.report import generate_security_report_markdown
+
+    history = get_score_history()
+    assert len(history) >= 1
+    assert history[-1]["trigger"] == "campaign"
+    assert 0.0 <= history[-1]["overall_score"] <= 10.0
+
+    report_md = generate_security_report_markdown(scope="open")
+    assert "# AgentShield Security Report" in report_md
+    assert "System Prompt Extraction" in report_md
+    assert "**Attack**" in report_md and "**Evidence**" in report_md
+    assert "**Impact**" in report_md and "**Remediation**" in report_md
+
+
 def test_all_attack_families_are_registered_and_seedable():
     assert len(FAMILY_BY_CATEGORY) == 11
     client = _make_client()
