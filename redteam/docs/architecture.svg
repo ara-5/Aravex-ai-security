@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1360 900" width="1360" height="900">
+<rect width="1360" height="900" fill="#0b0f14"/>
+<defs>
+<marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5ec9f0"/>
+    </marker>
+<marker id="arrow-good" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#38d996"/>
+    </marker>
+<marker id="arrow-crit" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#ff5c6c"/>
+    </marker>
+<marker id="arrow-muted" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8b98a9"/>
+    </marker>
+</defs>
+<text x="40" y="46" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="24" font-weight="700" fill="#e6edf3" text-anchor="start">AgentShield — Architecture</text>
+<text x="40" y="70" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="13.5" font-weight="400" fill="#8b98a9" text-anchor="start">Two independent FastAPI services, talking only over HTTP — the same boundary a real engagement has against a deployed agent.</text>
+<rect x="40" y="100" width="230" height="90" rx="10" fill="#161e2a" stroke="#2a3646" stroke-width="1.5"/>
+<text x="60" y="128" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="15" font-weight="600" fill="#e6edf3" text-anchor="start">Security Analyst</text>
+<text x="60" y="148" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="15" font-weight="600" fill="#e6edf3" text-anchor="start">/ CI Pipeline</text>
+<text x="60" y="170" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="12" font-weight="400" fill="#8b98a9" text-anchor="start">clicks dashboard, or</text>
+<text x="60" y="185" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="12" font-weight="400" fill="#8b98a9" text-anchor="start">regression-gate in CI</text>
+<rect x="40" y="230" width="560" height="610" rx="14" fill="#0e141c" stroke="#5ec9f0" stroke-width="1.5"/>
+<text x="62" y="264" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="17" font-weight="700" fill="#5ec9f0" text-anchor="start">redteam_engine — AgentShield</text>
+<text x="62" y="284" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="12" font-weight="400" fill="#8b98a9" text-anchor="start">port 8002</text>
+<rect x="62" y="302" width="516" height="60" rx="10" fill="#161e2a" stroke="#2a3646" stroke-width="1.5"/>
+<text x="78" y="327" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="13.5" font-weight="600" fill="#e6edf3" text-anchor="start">Dashboard (static/dashboard.html)</text>
+<text x="78" y="346" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#8b98a9" text-anchor="start">scorecard · severity · posture trend · findings · report download</text>
+<rect x="62" y="380" width="516" height="84" rx="10" fill="#161e2a" stroke="#5ec9f0" stroke-width="1.5"/>
+<text x="78" y="404" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="13.5" font-weight="700" fill="#e6edf3" text-anchor="start">Attack Planner (planner.py)</text>
+<text x="78" y="424" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#e6edf3" text-anchor="start">plan → generate → execute → observe → judge → mutate → repeat</text>
+<text x="78" y="442" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="11" font-weight="400" fill="#8b98a9" text-anchor="start">concurrent across techniques (ThreadPoolExecutor, MAX_WORKERS)</text>
+<rect x="62.0" y="482" width="162.66666666666666" height="92" rx="10" fill="#161e2a" stroke="#2a3646" stroke-width="1.5"/>
+<text x="74.0" y="504" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="12.5" font-weight="600" fill="#e6edf3" text-anchor="start">11 Attack Families</text>
+<text x="74.0" y="524" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10.8" font-weight="400" fill="#8b98a9" text-anchor="start">attacks/*.py</text>
+<text x="74.0" y="538" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10.8" font-weight="400" fill="#8b98a9" text-anchor="start">11 categories, 23 seed attacks</text>
+<rect x="238.66666666666666" y="482" width="162.66666666666666" height="92" rx="10" fill="#161e2a" stroke="#2a3646" stroke-width="1.5"/>
+<text x="250.66666666666666" y="504" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="12.5" font-weight="600" fill="#e6edf3" text-anchor="start">Judge</text>
+<text x="250.66666666666666" y="524" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10.8" font-weight="400" fill="#8b98a9" text-anchor="start">ground-truth (canaries,</text>
+<text x="250.66666666666666" y="538" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10.8" font-weight="400" fill="#8b98a9" text-anchor="start">tool calls, MCP logs)</text>
+<text x="250.66666666666666" y="552" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10.8" font-weight="400" fill="#8b98a9" text-anchor="start">+ optional LLM-judge</text>
+<rect x="415.3333333333333" y="482" width="162.66666666666666" height="92" rx="10" fill="#161e2a" stroke="#2a3646" stroke-width="1.5"/>
+<text x="427.3333333333333" y="504" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="12.5" font-weight="600" fill="#e6edf3" text-anchor="start">Adversary</text>
+<text x="427.3333333333333" y="524" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10.8" font-weight="400" fill="#8b98a9" text-anchor="start">llm_adversary.py</text>
+<text x="427.3333333333333" y="538" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10.8" font-weight="400" fill="#8b98a9" text-anchor="start">mutates failed attempts</text>
+<rect x="62.0" y="592" width="162.66666666666666" height="78" rx="10" fill="#161e2a" stroke="#2a3646" stroke-width="1.5"/>
+<text x="74.0" y="614" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="12.5" font-weight="600" fill="#38d996" text-anchor="start">Findings DB</text>
+<text x="74.0" y="634" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10.8" font-weight="400" fill="#8b98a9" text-anchor="start">Campaign · AttackAttempt</text>
+<text x="74.0" y="648" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10.8" font-weight="400" fill="#8b98a9" text-anchor="start">· Finding (SQLite/Postgres)</text>
+<rect x="238.66666666666666" y="592" width="162.66666666666666" height="78" rx="10" fill="#161e2a" stroke="#2a3646" stroke-width="1.5"/>
+<text x="250.66666666666666" y="614" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="12.5" font-weight="600" fill="#38d996" text-anchor="start">Score History</text>
+<text x="250.66666666666666" y="634" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10.8" font-weight="400" fill="#8b98a9" text-anchor="start">ScoreSnapshot per</text>
+<text x="250.66666666666666" y="648" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10.8" font-weight="400" fill="#8b98a9" text-anchor="start">campaign &amp; regression</text>
+<rect x="415.3333333333333" y="592" width="162.66666666666666" height="78" rx="10" fill="#161e2a" stroke="#2a3646" stroke-width="1.5"/>
+<text x="427.3333333333333" y="614" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="12.5" font-weight="600" fill="#38d996" text-anchor="start">Security Report</text>
+<text x="427.3333333333333" y="634" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10.8" font-weight="400" fill="#8b98a9" text-anchor="start">Markdown export</text>
+<text x="427.3333333333333" y="648" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10.8" font-weight="400" fill="#8b98a9" text-anchor="start">GET /reports/security</text>
+<rect x="62" y="690" width="516" height="56" rx="10" fill="#101820" stroke="#8b98a9" stroke-width="1.5" stroke-dasharray="4,3"/>
+<text x="78" y="712" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="12.5" font-weight="600" fill="#8b98a9" text-anchor="start">TargetAdapter protocol (target_adapter.py)</text>
+<text x="78" y="730" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10.8" font-weight="400" fill="#8b98a9" text-anchor="start">TargetClient (this repo's target) · GenericChatAdapter (any black-box chat agent)</text>
+<rect x="660" y="230" width="660" height="610" rx="14" fill="#150e10" stroke="#ff5c6c" stroke-width="1.5"/>
+<text x="682" y="264" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="17" font-weight="700" fill="#ff5c6c" text-anchor="start">target_agent — “Nova” (deliberately vulnerable)</text>
+<text x="682" y="284" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="12" font-weight="400" fill="#8b98a9" text-anchor="start">port 8001</text>
+<rect x="682.0" y="302" width="194.66666666666666" height="74" rx="10" fill="#161e2a" stroke="#ff9f4d" stroke-width="1.5"/>
+<text x="694.0" y="324" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="12.5" font-weight="700" fill="#ff9f4d" text-anchor="start">A · Router</text>
+<text x="694.0" y="342" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10.5" font-weight="400" fill="#8b98a9" text-anchor="start">routes/rewrites</text>
+<text x="694.0" y="356" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10.5" font-weight="400" fill="#8b98a9" text-anchor="start">the user request</text>
+<path d="M878.6666666666666,339 L890.6666666666666,339" stroke="#ff9f4d" stroke-width="1.8" fill="none" marker-end="url(#arrow-crit)"/>
+<rect x="892.6666666666666" y="302" width="194.66666666666666" height="74" rx="10" fill="#161e2a" stroke="#ff9f4d" stroke-width="1.5"/>
+<text x="904.6666666666666" y="324" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="12.5" font-weight="700" fill="#ff9f4d" text-anchor="start">B · Researcher</text>
+<text x="904.6666666666666" y="342" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10.5" font-weight="400" fill="#8b98a9" text-anchor="start">RAG search</text>
+<text x="904.6666666666666" y="356" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10.5" font-weight="400" fill="#8b98a9" text-anchor="start">(no tool access)</text>
+<path d="M1089.3333333333333,339 L1101.3333333333333,339" stroke="#ff9f4d" stroke-width="1.8" fill="none" marker-end="url(#arrow-crit)"/>
+<rect x="1103.3333333333333" y="302" width="194.66666666666666" height="74" rx="10" fill="#161e2a" stroke="#ff9f4d" stroke-width="1.5"/>
+<text x="1115.3333333333333" y="324" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="12.5" font-weight="700" fill="#ff9f4d" text-anchor="start">C · Executor</text>
+<text x="1115.3333333333333" y="342" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10.5" font-weight="400" fill="#8b98a9" text-anchor="start">tools + MCP + memory</text>
+<text x="1115.3333333333333" y="356" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10.5" font-weight="400" fill="#8b98a9" text-anchor="start">trusts B's note like a doc</text>
+<rect x="682.0" y="396" width="300.0" height="54" rx="10" fill="#161e2a" stroke="#2a3646" stroke-width="1.5"/>
+<text x="694.0" y="417" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="12" font-weight="600" fill="#e6edf3" text-anchor="start">RAG (vectorstore.py)</text>
+<text x="694.0" y="435" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10.3" font-weight="400" fill="#8b98a9" text-anchor="start">poisoned docs → trusted instructions</text>
+<rect x="998.0" y="396" width="300.0" height="54" rx="10" fill="#161e2a" stroke="#2a3646" stroke-width="1.5"/>
+<text x="1010.0" y="417" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="12" font-weight="600" fill="#e6edf3" text-anchor="start">Long-term Memory</text>
+<text x="1010.0" y="435" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10.3" font-weight="400" fill="#8b98a9" text-anchor="start">“remember that…” → persistent backdoor</text>
+<rect x="682.0" y="462" width="300.0" height="54" rx="10" fill="#161e2a" stroke="#2a3646" stroke-width="1.5"/>
+<text x="694.0" y="483" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="12" font-weight="600" fill="#e6edf3" text-anchor="start">Tools (tools.py)</text>
+<text x="694.0" y="501" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10.3" font-weight="400" fill="#8b98a9" text-anchor="start">path traversal, unchecked email/db/SSRF</text>
+<rect x="998.0" y="462" width="300.0" height="54" rx="10" fill="#161e2a" stroke="#2a3646" stroke-width="1.5"/>
+<text x="1010.0" y="483" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="12" font-weight="600" fill="#e6edf3" text-anchor="start">MCP (mcp_tools.py)</text>
+<text x="1010.0" y="501" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10.3" font-weight="400" fill="#8b98a9" text-anchor="start">tool poisoning, no-auth token/scope grants</text>
+<rect x="682" y="536" width="300.0" height="66" rx="10" fill="#101820" stroke="#5ec9f0" stroke-width="1.5" stroke-dasharray="4,3"/>
+<text x="694" y="558" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="12.5" font-weight="600" fill="#5ec9f0" text-anchor="start">LLMProvider</text>
+<text x="694" y="577" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10.5" font-weight="400" fill="#8b98a9" text-anchor="start">naive (default) · ollama ·</text>
+<text x="694" y="591" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10.5" font-weight="400" fill="#8b98a9" text-anchor="start">openai_compatible</text>
+<rect x="998.0" y="536" width="300.0" height="66" rx="10" fill="#101820" stroke="#5ec9f0" stroke-width="1.5" stroke-dasharray="4,3"/>
+<text x="1010.0" y="558" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="12.5" font-weight="600" fill="#5ec9f0" text-anchor="start">EmbeddingProvider</text>
+<text x="1010.0" y="577" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10.5" font-weight="400" fill="#8b98a9" text-anchor="start">hash (default, offline) ·</text>
+<text x="1010.0" y="591" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10.5" font-weight="400" fill="#8b98a9" text-anchor="start">ollama · qdrant-backed store</text>
+<rect x="682" y="620" width="616" height="46" rx="10" fill="#1a1012" stroke="#ff5c6c" stroke-width="1.5" stroke-dasharray="4,3"/>
+<text x="694" y="640" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="12" font-weight="600" fill="#ff5c6c" text-anchor="start">Canary secrets planted in the system prompt (config.py)</text>
+<text x="694" y="657" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10.3" font-weight="400" fill="#8b98a9" text-anchor="start">ground truth for every leak/exfiltration judge</text>
+<path d="M155.0,190 L155.0,228" stroke="#8b98a9" stroke-width="2" fill="none" marker-end="url(#arrow-muted)"/>
+<path d="M600,386 L660,386" stroke="#5ec9f0" stroke-width="2" fill="none" marker-end="url(#arrow-accent)"/>
+<text x="630.0" y="378" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="11" font-weight="400" fill="#5ec9f0" text-anchor="middle">POST /chat</text>
+<text x="630.0" y="392" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10" font-weight="400" fill="#8b98a9" text-anchor="middle">(attack payloads)</text>
+<path d="M660,424 L600,424" stroke="#38d996" stroke-width="2" fill="none" marker-end="url(#arrow-good)"/>
+<text x="630.0" y="440" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="11" font-weight="400" fill="#38d996" text-anchor="middle">GET /admin/state, /admin/memory</text>
+<text x="630.0" y="454" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="10" font-weight="400" fill="#8b98a9" text-anchor="middle">(ground truth for judging)</text>
+<text x="40" y="866" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="13" font-weight="400" fill="#5ec9f0" text-anchor="start">──</text>
+<text x="62" y="866" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#8b98a9" text-anchor="start">attack traffic</text>
+<text x="170" y="866" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="13" font-weight="400" fill="#38d996" text-anchor="start">──</text>
+<text x="192" y="866" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#8b98a9" text-anchor="start">introspection / ground truth</text>
+<text x="380" y="866" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="13" font-weight="400" fill="#8b98a9" text-anchor="start">──</text>
+<text x="402" y="866" font-family="-apple-system,Segoe UI,Arial,sans-serif" font-size="11.5" font-weight="400" fill="#8b98a9" text-anchor="start">control flow</text>
+</svg>

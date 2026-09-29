@@ -65,11 +65,15 @@ def run_regression(finding_id: int, client: TargetAdapter | None = None) -> dict
         db.close()
 
 
-def run_all_regressions(statuses: list[str] | None = None) -> list[dict]:
+def run_all_regressions(statuses: list[str] | None = None, client: TargetAdapter | None = None) -> list[dict]:
     statuses = statuses or ["open", "resolved", "regressed"]
     db = SessionLocal()
     try:
         finding_ids = [f.id for f in db.query(Finding).filter(Finding.status.in_(statuses)).all()]
     finally:
         db.close()
-    return [run_regression(fid) for fid in finding_ids]
+    # Reuse one client across all findings instead of letting each
+    # run_regression() call construct its own default -- matters for
+    # callers (the CLI) that inject a specific adapter/client.
+    client = client or TargetClient()
+    return [run_regression(fid, client) for fid in finding_ids]

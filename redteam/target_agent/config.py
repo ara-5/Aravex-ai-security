@@ -46,6 +46,15 @@ OPENAI_COMPATIBLE_MODEL = os.getenv("OPENAI_COMPATIBLE_MODEL", "gpt-4o-mini")
 EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "hash").strip().lower()
 OLLAMA_EMBEDDING_MODEL = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
 
+# --- Pluggable vector store backend (target_agent/vectorstore.py) ---
+# "local" (default, FAISS/numpy, zero extra services) | "qdrant".
+# QDRANT_URL=":memory:" runs Qdrant's embedded engine in-process (same
+# client code path as a real server); point it at a real server (e.g.
+# docker-compose's `qdrant` profile) for a genuinely multi-worker setup.
+VECTOR_BACKEND = os.getenv("VECTOR_BACKEND", "local").strip().lower()
+QDRANT_URL = os.getenv("QDRANT_URL", ":memory:")
+QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "agentshield_docs")
+
 # --- Deliberately planted secrets (canaries) ---
 # A secure agent would never put these in a system prompt or tool-accessible
 # memory/DB. This one does, so the red team can prove exfiltration.

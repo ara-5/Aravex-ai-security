@@ -76,6 +76,8 @@ Open Finding: Attack → Evidence → Impact → Remediation → Regression Test
 
 ## Architecture
 
+![AgentShield architecture: redteam_engine (Attack Planner, 11 attack families, judge, adversary, findings DB, score history, security report, TargetAdapter) sends attack payloads to target_agent's 3-agent pipeline (Router, Researcher, Executor) over POST /chat, and reads back ground truth over GET /admin/state and /admin/memory for judging](docs/architecture.svg)
+
 Two independent FastAPI services:
 
 | Service | Port | Role |
@@ -177,6 +179,27 @@ pytest tests/ -v
 More screenshots (each stage of the campaign → fix → regression flow) are in
 [`docs/screenshots/`](docs/screenshots/).
 
+## CLI: everything the dashboard does, scriptable
+
+`redteam_engine/cli.py` is a thin argparse wrapper around the exact same
+functions the dashboard's API calls — same database, same findings,
+whichever one you use. For CI pipelines, cron jobs, or anyone who'd
+rather not click through a UI:
+
+```bash
+python -m redteam_engine.cli campaign run --categories mcp_attacks,rag_poisoning
+python -m redteam_engine.cli scorecard
+python -m redteam_engine.cli findings list --status open
+python -m redteam_engine.cli findings show 12
+python -m redteam_engine.cli regression run 12
+python -m redteam_engine.cli regression run-all
+python -m redteam_engine.cli report export --scope open --out report.md
+```
+
+Requires the target agent reachable at `TARGET_AGENT_URL` (same as the
+dashboard); the `redteam_engine` server itself doesn't need to be
+running — the CLI talks to the same SQLite/Postgres database directly.
+
 ## The killer feature: prove a fix actually works
 
 Every open finding stores the *exact* payload (and any setup steps — a
@@ -239,6 +262,7 @@ each proven with a real test, not just declared:
 |---|---|---|
 | `target_agent/llm_providers.py` — `LLMProvider` | `naive` (default, deterministic, zero deps) · `ollama` · `openai_compatible` (OpenAI, Azure OpenAI, vLLM, LM Studio, Groq, ...) | Same `TOOL_CALL: {...}` convention across all three — swap `LLM_PROVIDER` and every attack family works unmodified |
 | `target_agent/vectorstore.py` — `EmbeddingProvider` | `hash` (default, zero deps) · `ollama` (real embedding model, auto-fallback if unreachable) | RAG-poisoning tests pass unchanged under either |
+| `target_agent/vectorstore.py` — vector store backend | `LocalVectorStore` (FAISS/numpy, default) · `QdrantVectorStore` (`VECTOR_BACKEND=qdrant`, real Qdrant collection — `:memory:` embedded engine or a real server via the `qdrant` compose profile) | `tests/test_vectorstore.py` proves identical ranking behavior against the same query on both backends, and that an unreachable Qdrant falls back to the local store automatically |
 | `redteam_engine/target_adapter.py` — `TargetAdapter` | `TargetClient` (this repo's fully-introspectable reference target) · `GenericChatAdapter` (any black-box agent with nothing but a chat endpoint) | `tests/test_generic_adapter.py` spins up a **real HTTP server** and red-teams it through nothing but `GenericChatAdapter`, with zero changes to any attack family — techniques needing introspection correctly report "not observable" instead of crashing |
 | Judging | Deterministic ground-truth judges (always on) + optional `redteam_engine/llm_judge.py` LLM-judge second opinion (`ENABLE_LLM_JUDGE=true`) | Never overrides the deterministic verdict — stored alongside it on every `AttackAttempt` |
 
@@ -263,10 +287,10 @@ Python, FastAPI, LangGraph (with a same-shaped local fallback so the
 3-agent pipeline runs even without the package installed), SQLAlchemy
 (SQLite by default, tuned with WAL + busy-timeout for the planner's
 concurrent workers; Postgres via `DATABASE_URL` — see `docker-compose.yml`'s
-`postgres` profile), FAISS when available / numpy cosine-similarity
-otherwise, Ollama and any OpenAI-compatible endpoint for real models,
-OpenTelemetry (opt-in), Docker, pytest, GitHub Actions (including a
-reusable composite Action — see below).
+`postgres` profile), FAISS/numpy or a real Qdrant collection for RAG
+(`VECTOR_BACKEND`), Ollama and any OpenAI-compatible endpoint for real
+models, OpenTelemetry (opt-in), Docker, pytest, GitHub Actions (including
+a reusable composite Action — see below).
 
 **By design, this is a hand-built attack engine, not a wrapper around
 PyRIT/Garak/Promptfoo/DeepEval** — those stay documented, additive
@@ -323,6 +347,7 @@ for any other repo running an AgentShield-adapted target.
 
 ```
 observability.py       shared opt-in OpenTelemetry setup (both services)
+docs/architecture.svg  the diagram above; docs/screenshots/ the campaign->fix->regression capture
 
 target_agent/          the vulnerable system under test
   config.py               system prompt, canary secrets, feature flags
@@ -330,7 +355,7 @@ target_agent/          the vulnerable system under test
   llm_providers.py         pluggable LLMProvider: naive | ollama | openai_compatible
   agents.py                Router → Researcher → Executor pipeline
   tools.py, mcp_tools.py    tool + MCP registries and handlers
-  vectorstore.py            pluggable EmbeddingProvider RAG store (thread-safe)
+  vectorstore.py            pluggable EmbeddingProvider + vector store (local FAISS/numpy | Qdrant), thread-safe
   seed_data.py, db.py, main.py   RAG seed docs, persistence, FastAPI app + /admin
 
 redteam_engine/         AgentShield itself
@@ -341,6 +366,7 @@ redteam_engine/         AgentShield itself
   target_adapter.py             the TargetAdapter protocol
   adapters/generic_chat_adapter.py   black-box-agent adapter
   target_client.py               reference adapter for this repo's own target
+  cli.py                          scriptable CLI (campaign/scorecard/findings/regression/report)
   judge helpers in attacks/base.py, scorecard.py, report.py, regression.py
   main.py, static/dashboard.html   API + dashboard (optional API-key auth)
 
@@ -356,12 +382,6 @@ Honest gaps, not yet closed:
 - **Full multi-tenant auth/RBAC.** The shared-secret gate above is real
   but deliberately minimal — no user accounts, no per-route roles. Fine
   for local/CI/single-team use; a hosted multi-tenant version needs more.
-- **Qdrant/pgvector.** `EmbeddingProvider` makes the embedding model
-  swappable; the vector *store* itself is still in-process
-  FAISS/numpy. A `Qdrant`/`pgvector` backend behind the same interface
-  would be the natural next step for a genuinely multi-worker deployment
-  (Postgres itself is already supported for the relational data, via the
-  `postgres` `docker-compose.yml` profile).
 - **True async, not threads.** The planner's concurrency is a
   `ThreadPoolExecutor` (simple, and enough to turn a 23-seed campaign
   into single-digit seconds) rather than `asyncio`/`httpx.AsyncClient`.

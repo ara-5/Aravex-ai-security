@@ -1,17 +1,30 @@
 """
 RAG vector store for the target agent.
 
-Uses FAISS when it's importable (Linux/Docker installs), otherwise falls
-back to a small numpy cosine-similarity index so the platform runs
-unmodified on Windows without a FAISS wheel.
+Two backends (VECTOR_BACKEND):
+  - "local" (default): FAISS when importable (Linux/Docker installs),
+    otherwise a small numpy cosine-similarity index -- zero extra
+    services, runs unmodified on Windows without a FAISS wheel.
+  - "qdrant": a real Qdrant collection. Works against a real server
+    (QDRANT_URL, e.g. the `qdrant` docker-compose profile) or, with
+    QDRANT_URL=":memory:", an embedded in-process instance -- same
+    client code path as production, zero extra services, which is what
+    tests/CI use.
 
-Embeddings are pluggable (EmbeddingProvider): a deterministic hashing
-embedding by default (zero dependencies, works fully offline), or a real
-Ollama embedding model (EMBEDDING_PROVIDER=ollama) for production-quality
-retrieval. If the Ollama embedding endpoint is unreachable, the store
-probes it once at construction time and permanently falls back to the
-hash provider for that process (mixing embedding spaces mid-index would
-silently break cosine similarity, so the fallback is all-or-nothing).
+Both implement the same duck-typed interface (`docs`, `add`, `add_many`,
+`clear`, `search`), so nothing elsewhere in the codebase (agents.py,
+seed_data.py, main.py) needs to know which one is active. If Qdrant is
+configured but unreachable at startup, `create_vector_store()` falls
+back to the local backend rather than crashing RAG entirely.
+
+Embeddings are pluggable separately (EmbeddingProvider): a deterministic
+hashing embedding by default (zero dependencies, works fully offline), or
+a real Ollama embedding model (EMBEDDING_PROVIDER=ollama) for
+production-quality retrieval. If the Ollama embedding endpoint is
+unreachable, the store probes it once at construction time and
+permanently falls back to the hash provider for that process (mixing
+embedding spaces mid-index would silently break cosine similarity, so
+the fallback is all-or-nothing).
 """
 from __future__ import annotations
 
@@ -113,7 +126,78 @@ class Document:
     trust: str = "external"  # "internal" | "external" — provenance label, NOT enforced (that's the vuln)
 
 
-class VectorStore:
+class QdrantVectorStore:
+    """Real Qdrant-backed store, behind the exact same duck-typed
+    interface as LocalVectorStore. `QDRANT_URL=":memory:"` runs Qdrant's
+    embedded engine in-process (same client/API calls as a real server,
+    zero extra services) -- what tests and the default "local" fallback
+    check use; point it at a real server (docker-compose's `qdrant`
+    profile) for a genuinely multi-worker deployment."""
+
+    def __init__(self, embedding_provider: EmbeddingProvider):
+        from qdrant_client import QdrantClient  # optional dependency
+
+        self.embedding_provider = embedding_provider
+        self.collection = config.QDRANT_COLLECTION
+        self._lock = threading.RLock()
+        self._docs_by_id: dict[int, Document] = {}
+        url = config.QDRANT_URL
+        self.client = QdrantClient(location=url) if url == ":memory:" else QdrantClient(url=url)
+        self._ensure_collection()
+
+    def _ensure_collection(self):
+        from qdrant_client.models import Distance, VectorParams
+
+        existing = [c.name for c in self.client.get_collections().collections]
+        if self.collection not in existing:
+            self.client.create_collection(
+                collection_name=self.collection,
+                vectors_config=VectorParams(size=self.embedding_provider.dim, distance=Distance.COSINE),
+            )
+
+    def health_check(self):
+        self.client.get_collections()  # raises if unreachable
+
+    @property
+    def docs(self) -> list[Document]:
+        with self._lock:
+            return list(self._docs_by_id.values())
+
+    def add(self, doc: Document):
+        self.add_many([doc])
+
+    def add_many(self, docs: list[Document]):
+        from qdrant_client.models import PointStruct
+
+        with self._lock:
+            points = []
+            next_id = len(self._docs_by_id)
+            for i, doc in enumerate(docs):
+                point_id = next_id + i
+                self._docs_by_id[point_id] = doc
+                vec = self.embedding_provider.embed(doc.content)
+                points.append(PointStruct(id=point_id, vector=vec.tolist(), payload={"doc_id": doc.doc_id}))
+            if points:
+                self.client.upsert(collection_name=self.collection, points=points)
+
+    def clear(self):
+        with self._lock:
+            self._docs_by_id.clear()
+            self.client.delete_collection(self.collection)
+            self._ensure_collection()
+
+    def search(self, query: str, k: int = 3) -> list[tuple[Document, float]]:
+        with self._lock:
+            if not self._docs_by_id:
+                return []
+            qvec = self.embedding_provider.embed(query)
+            hits = self.client.query_points(
+                collection_name=self.collection, query=qvec.tolist(), limit=min(k, len(self._docs_by_id))
+            ).points
+            return [(self._docs_by_id[h.id], float(h.score)) for h in hits if h.id in self._docs_by_id]
+
+
+class LocalVectorStore:
     """FastAPI runs sync `def` route handlers in a thread pool, so with
     the red-team engine's planner firing concurrent chat requests
     (planner.py, MAX_WORKERS), this process-wide singleton IS accessed
@@ -177,7 +261,23 @@ class VectorStore:
             return [(self.docs[i], float(sims[i])) for i in top]
 
 
-# Process-wide singleton (per target_agent process). A real deployment
-# would use Qdrant/pgvector for multi-worker sharing; kept in-process here
-# so the platform needs no extra services to run.
-STORE = VectorStore()
+def create_vector_store():
+    """Picks the vector store backend from config.VECTOR_BACKEND. Falls
+    back to the local backend if Qdrant is configured but unreachable at
+    startup, so a misconfigured/down Qdrant degrades RAG quality-wise
+    rather than crashing the whole agent."""
+    embedding_provider = _select_embedding_provider()
+    if config.VECTOR_BACKEND == "qdrant":
+        try:
+            store = QdrantVectorStore(embedding_provider)
+            store.health_check()
+            return store
+        except Exception:
+            pass  # unreachable/not installed -- fall back below
+    return LocalVectorStore(embedding_provider)
+
+
+# Process-wide singleton (per target_agent process). Backed by FAISS/numpy
+# by default, or a real Qdrant collection (VECTOR_BACKEND=qdrant) for a
+# genuinely multi-worker deployment.
+STORE = create_vector_store()

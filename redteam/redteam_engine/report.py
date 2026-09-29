@@ -55,7 +55,7 @@ IMPACT_LIBRARY = {
     "agent_to_agent": (
         "Inter-agent messages are trusted without verification, so a single compromised or "
         "poisoned agent early in the pipeline can manipulate every downstream agent into taking "
-        "unauthorized action — the multi-agent architecture multiplies a single-point failure."
+        "unauthorized action - the multi-agent architecture multiplies a single-point failure."
     ),
 }
 
@@ -72,7 +72,7 @@ REMEDIATION_LIBRARY = {
         "framing."
     ),
     "system_prompt_extraction": (
-        "Never place secrets in the system prompt — inject them at tool-execution time from a "
+        "Never place secrets in the system prompt - inject them at tool-execution time from a "
         "secrets manager, scoped to the tool call, and never into model-visible context. Add "
         "output filtering for known-secret patterns as defense in depth."
     ),
@@ -88,7 +88,7 @@ REMEDIATION_LIBRARY = {
         "re-confirmation before memory-derived content can trigger a privileged tool call."
     ),
     "tool_poisoning": (
-        "Apply the same trust boundary to tool OUTPUT as to any other untrusted input — never "
+        "Apply the same trust boundary to tool OUTPUT as to any other untrusted input - never "
         "let tool results be parsed as instructions. Sandbox and validate tool arguments "
         "server-side regardless of what the model requests."
     ),
