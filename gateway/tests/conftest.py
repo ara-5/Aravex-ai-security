@@ -19,6 +19,18 @@ TEST_AGENT_KEYS = {
 }
 
 
+TEST_APPROVER_KEY = "test-approver-key"
+
+
+def approver_headers() -> dict[str, str]:
+    return {"Authorization": f"Bearer {TEST_APPROVER_KEY}"}
+
+
+@pytest.fixture
+def approver_configured(monkeypatch):
+    monkeypatch.setenv("GATEWAY_APPROVER_KEY", TEST_APPROVER_KEY)
+
+
 @pytest.fixture(autouse=True)
 def seed_test_credentials():
     for agent_id, plaintext_key in TEST_AGENT_KEYS.items():

@@ -8,7 +8,9 @@ action is safe. This is where that claim gets checked.
 """
 from __future__ import annotations
 
+import hmac
 import logging
+import os
 from contextlib import asynccontextmanager
 from typing import Annotated
 
@@ -128,20 +130,50 @@ class ApprovalResolutionRequest(BaseModel):
     approved: bool
 
 
-@app.get("/v1/approvals")
+def _bearer(authorization: str | None) -> str:
+    if authorization and authorization.lower().startswith("bearer "):
+        return authorization[len("bearer "):].strip()
+    return ""
+
+
+def _is_approver(token: str) -> bool:
+    expected = os.environ.get("GATEWAY_APPROVER_KEY", "")
+    return bool(expected) and bool(token) and hmac.compare_digest(token.encode(), expected.encode())
+
+
+def require_approver(authorization: Annotated[str | None, Header()] = None) -> None:
+    """Resolving approvals is the human-oversight control, so it needs its own
+    credential, separate from every agent key: an agent must never be able to
+    approve its own request. Fails closed: with GATEWAY_APPROVER_KEY unset the
+    approval endpoints are disabled rather than open."""
+    if not os.environ.get("GATEWAY_APPROVER_KEY"):
+        raise HTTPException(status_code=503, detail="GATEWAY_APPROVER_KEY is not set; approval endpoints are disabled")
+    if not _is_approver(_bearer(authorization)):
+        log_auth_failure("approver", "missing or invalid approver credential")
+        raise HTTPException(status_code=401, detail="approver credential required")
+
+
+@app.get("/v1/approvals", dependencies=[Depends(require_approver)])
 def list_pending_approvals() -> list[dict]:
     return [r.model_dump() for r in approval_manager.list_pending()]
 
 
 @app.get("/v1/approvals/{approval_id}")
-def get_approval(approval_id: str) -> dict:
+def get_approval(approval_id: str, authorization: Annotated[str | None, Header()] = None) -> dict:
+    """Status of one approval. The approver may read any; an agent may read only its
+    own, so the caller can poll. Unknown id and wrong credential look the same."""
+    token = _bearer(authorization)
     record = approval_manager.get(approval_id)
-    if record is None:
-        raise HTTPException(status_code=404, detail="approval not found")
+    if _is_approver(token):
+        if record is None:
+            raise HTTPException(status_code=404, detail="approval not found")
+        return record.model_dump()
+    if record is None or not token or not credential_store.verify(record.request.agent_id, token):
+        raise HTTPException(status_code=401, detail="credential required")
     return record.model_dump()
 
 
-@app.post("/v1/approvals/{approval_id}/decision")
+@app.post("/v1/approvals/{approval_id}/decision", dependencies=[Depends(require_approver)])
 def resolve_approval(approval_id: str, body: ApprovalResolutionRequest) -> dict:
     record = approval_manager.get(approval_id)
     if record is None:

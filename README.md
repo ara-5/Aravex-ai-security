@@ -144,8 +144,10 @@ Not done yet:
 - The MCP proxy gates tool calls only (not tool descriptions or results), handles
   stdio only, and has not been run against a real third-party server yet. See its
   [limits](docs/MCP_PROXY.md#limits).
-- The gateway's approval endpoints have no authentication, so waiting for a human
-  approval through the proxy is off by default.
+- Human approvals need `GATEWAY_APPROVER_KEY` (separate from agent keys; unset means
+  the approval endpoints are disabled). It is a single shared key, not per-person
+  identities, so the audit trail records the `approver` name a caller types, not a
+  verified person.
 - The dashboards of the two services are still separate; there is no unified one.
 - `test_cli_unreachable_target_fails_cleanly` assumes port 1 is closed and fails
   on machines where something listens there. It passes in CI.

@@ -149,7 +149,11 @@ live gateway:
 Then check:
 - `logs/audit.log` -- every decision as a structured JSON line
 - `http://127.0.0.1:8000/metrics` -- Prometheus metrics
-- `http://127.0.0.1:8000/v1/approvals` -- pending human-approval queue
+- `http://127.0.0.1:8000/v1/approvals` -- pending human-approval queue. Needs the approver
+  credential: set `GATEWAY_APPROVER_KEY` before starting the gateway and send it as a bearer token.
+  It is separate from every agent key, so an agent cannot approve its own request. With the
+  variable unset the approval endpoints answer 503 (disabled), not open. An agent's own key can
+  read the status of its own approval (`GET /v1/approvals/{id}`) and nothing else there.
 - `http://127.0.0.1:8000/v1/agents` -- the registered agent identities and their permissions
 
 ## Run the full stack (gateway + OPA + Redis + Postgres + Prometheus + Grafana)

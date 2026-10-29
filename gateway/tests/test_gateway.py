@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from gateway.main import app
-from tests.conftest import auth_headers
+from tests.conftest import approver_headers, auth_headers
 
 client = TestClient(app)
 
@@ -49,7 +49,7 @@ def test_secret_access_denied():
     assert response.json()["decision"] == "DENY"
 
 
-def test_production_delete_creates_pending_approval():
+def test_production_delete_creates_pending_approval(approver_configured):
     response = client.post(
         "/v1/agent-action",
         headers=auth_headers("data-ops-agent"),
@@ -67,11 +67,12 @@ def test_production_delete_creates_pending_approval():
     approval_id = body["approval_id"]
     assert approval_id is not None
 
-    pending = client.get("/v1/approvals").json()
+    pending = client.get("/v1/approvals", headers=approver_headers()).json()
     assert any(r["approval_id"] == approval_id for r in pending)
 
     resolved = client.post(
         f"/v1/approvals/{approval_id}/decision",
+        headers=approver_headers(),
         json={"approver": "h-jane-owner", "approved": True},
     )
     assert resolved.status_code == 200
@@ -80,6 +81,7 @@ def test_production_delete_creates_pending_approval():
     # Resolving twice is rejected.
     second = client.post(
         f"/v1/approvals/{approval_id}/decision",
+        headers=approver_headers(),
         json={"approver": "h-jane-owner", "approved": True},
     )
     assert second.status_code == 409
@@ -135,3 +137,47 @@ def test_credential_does_not_transfer_between_agents():
         },
     )
     assert response.status_code == 401
+
+
+def _pending_approval_id() -> str:
+    body = client.post(
+        "/v1/agent-action",
+        headers=auth_headers("data-ops-agent"),
+        json={"human_id": "h-jane-owner", "agent_id": "data-ops-agent", "tool_id": "database_admin_tool",
+              "action": "delete", "resource": "database.auth_test", "data_classification": "HIGHLY_SENSITIVE"},
+    ).json()
+    assert body["decision"] == "HUMAN_APPROVAL"
+    return body["approval_id"]
+
+
+def test_approvals_are_disabled_when_no_approver_key_is_set(monkeypatch):
+    monkeypatch.delenv("GATEWAY_APPROVER_KEY", raising=False)
+    approval_id = _pending_approval_id()
+    assert client.get("/v1/approvals").status_code == 503
+    assert client.get("/v1/approvals", headers=approver_headers()).status_code == 503
+    r = client.post(f"/v1/approvals/{approval_id}/decision", headers=approver_headers(),
+                    json={"approver": "x", "approved": True})
+    assert r.status_code == 503
+
+
+def test_an_agent_cannot_approve_its_own_request(approver_configured):
+    approval_id = _pending_approval_id()
+    for headers in ({}, auth_headers("data-ops-agent"), {"Authorization": "Bearer wrong"}):
+        assert client.get("/v1/approvals", headers=headers).status_code == 401
+        r = client.post(f"/v1/approvals/{approval_id}/decision", headers=headers,
+                        json={"approver": "data-ops-agent", "approved": True})
+        assert r.status_code == 401, headers
+    # still pending: nothing above resolved it
+    assert client.get(f"/v1/approvals/{approval_id}", headers=approver_headers()).json()["status"] == "PENDING"
+
+
+def test_agent_can_read_only_its_own_approval_status(approver_configured):
+    approval_id = _pending_approval_id()
+    own = client.get(f"/v1/approvals/{approval_id}", headers=auth_headers("data-ops-agent"))
+    assert own.status_code == 200 and own.json()["status"] == "PENDING"
+    other = client.get(f"/v1/approvals/{approval_id}", headers=auth_headers("billing-agent"))
+    assert other.status_code == 401
+    assert client.get(f"/v1/approvals/{approval_id}").status_code == 401
+    # an unknown id looks the same as a wrong credential
+    assert client.get("/v1/approvals/nope", headers=auth_headers("data-ops-agent")).status_code == 401
+    assert client.get("/v1/approvals/nope", headers=approver_headers()).status_code == 404

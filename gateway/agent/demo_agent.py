@@ -5,6 +5,8 @@ is ALLOW.
 """
 from __future__ import annotations
 
+import os
+
 from pathlib import Path
 from typing import Any
 
@@ -66,6 +68,7 @@ class GatewayClient:
         response = self._client.post(
             f"/v1/approvals/{approval_id}/decision",
             json={"approver": approver, "approved": approved},
+            headers={"Authorization": f"Bearer {os.environ.get('GATEWAY_APPROVER_KEY', '')}"},
         )
         response.raise_for_status()
         return response.json()

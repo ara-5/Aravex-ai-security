@@ -31,6 +31,7 @@ from gateway.security.anomaly import AnomalyTracker
 ROOT = Path(__file__).resolve().parents[2]
 APPROVED = (yaml.safe_load((ROOT / "policies" / "approved_rules.yaml").read_text(encoding="utf-8")) or {}).get("rules", [])
 KEY = "proxy-test-key"
+APPROVER = {"Authorization": "Bearer reviewer-key"}
 HUMAN = "h-jane-owner"
 
 MAPPING = Mapping.from_dict({
@@ -112,6 +113,7 @@ def gateway(monkeypatch):
         monkeypatch.setattr(gateway_main, "engine", PolicyEngine(rules=rules, anomaly_tracker=AnomalyTracker()))
 
     monkeypatch.delenv("OPA_URL", raising=False)
+    monkeypatch.setenv("GATEWAY_APPROVER_KEY", "reviewer-key")
     monkeypatch.setattr(gateway_main.credential_store, "verify", lambda *_: True)
     install()
     client = TestClient(gateway_main.app)
@@ -233,7 +235,7 @@ def test_a_clean_allow_from_a_stub_gateway_does_pass(gateway):
 
 # -- human approval ------------------------------------------------------------------------------
 def _pending(gateway, table):
-    for rec in gateway.get("/v1/approvals").json():
+    for rec in gateway.get("/v1/approvals", headers=APPROVER).json():
         if table in rec["request"]["resource"]:
             return rec["approval_id"]
     return None
@@ -244,7 +246,8 @@ async def _resolve_when_pending(gateway, table, approved):
         approval_id = await asyncio.to_thread(_pending, gateway, table)
         if approval_id:
             await asyncio.to_thread(
-                gateway.post, f"/v1/approvals/{approval_id}/decision", json={"approver": "ara", "approved": approved})
+                gateway.post, f"/v1/approvals/{approval_id}/decision", json={"approver": "ara", "approved": approved},
+                headers=APPROVER)
             return
         await asyncio.sleep(0.02)
     raise AssertionError("no approval request ever appeared")

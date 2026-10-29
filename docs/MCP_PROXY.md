@@ -105,9 +105,11 @@ last address). Each was caught.
 - **stdio only,** on both sides. No HTTP/SSE transport yet.
 - **One identity per proxy process,** and no session context: each call is judged on
   its own, apart from what the gateway's anomaly tracker sees for that agent.
-- **Approval waiting is only as strong as the gateway's approval endpoints, which have
-  no authentication today.** Anything that can reach the gateway could approve its own
-  request. That is why waiting is off by default; fix the endpoint before enabling it.
+- **Approval waiting depends on the approver key staying with people.** The gateway
+  now requires `GATEWAY_APPROVER_KEY` to list or resolve approvals, and the proxy only
+  polls with the agent's own key, which can read that agent's approval status and
+  nothing more. If the approver key is set on the agent's machine, the protection is
+  gone. Waiting is still off by default.
 - **Not yet run against a real third-party server.** It is tested against stand-in
   servers built on the official Python SDK. The first run against, for example, the
   reference filesystem server will likely need a mapping written for its tool names.
