@@ -5,6 +5,8 @@
 [![Red-team CI](https://github.com/ara-5/Aravex-ai-security/actions/workflows/redteam-ci.yml/badge.svg)](https://github.com/ara-5/Aravex-ai-security/actions/workflows/redteam-ci.yml)
 [![Gateway CI](https://github.com/ara-5/Aravex-ai-security/actions/workflows/gateway-ci.yml/badge.svg)](https://github.com/ara-5/Aravex-ai-security/actions/workflows/gateway-ci.yml)
 [![Contracts CI](https://github.com/ara-5/Aravex-ai-security/actions/workflows/contracts-ci.yml/badge.svg)](https://github.com/ara-5/Aravex-ai-security/actions/workflows/contracts-ci.yml)
+[![MCP Proxy CI](https://github.com/ara-5/Aravex-ai-security/actions/workflows/mcp-proxy-ci.yml/badge.svg)](https://github.com/ara-5/Aravex-ai-security/actions/workflows/mcp-proxy-ci.yml)
+[![Verification Gate](https://github.com/ara-5/Aravex-ai-security/actions/workflows/verification-gate.yml/badge.svg)](https://github.com/ara-5/Aravex-ai-security/actions/workflows/verification-gate.yml)
 ![License: All rights reserved](https://img.shields.io/badge/License-All%20rights%20reserved-lightgrey.svg)
 
 Aravex secures AI agents end to end. A red-team engine attacks an agent system
@@ -47,11 +49,12 @@ was actually measured.
 | [`redteam/`](redteam/) | Red-team engine (from AgentShield): planner, 11 attack families, ground-truth judges, scorecard, dashboard, regression runner. Also holds `target_agent/`, a deliberately vulnerable multi-agent assistant, with an optional gateway guard (`GATEWAY_MODE=enforce`). |
 | [`gateway/`](gateway/) | Runtime gateway (from AegisAI): agent identity and IAM, rule engine (local YAML or OPA/Rego), risk scoring, DLP and injection detectors, human-approval queue, audit log, Prometheus/Grafana. |
 | [`schemas/`](schemas/) | Shared contracts: `AgentAction`, `PolicyDecision`, `Finding`, `PolicyProposal`, `VerificationResult`, and the category-to-defense-layer map. |
+| [`mcp_proxy/`](mcp_proxy/) | MCP proxy: puts the gateway in front of any stdio MCP server. Every tool call is checked first and reaches the server only on `ALLOW`. [Docs](docs/MCP_PROXY.md) |
 | [`loop/`](loop/) | The feedback loop: rule synthesis, benign-action check, proposal store, verification records. |
 | [`policies/`](policies/) | Approved, verified gateway rules, who approved them, and the findings they must keep blocked. |
 | [`scripts/`](scripts/) | `compare_defense.py` (bare vs. protected) and `run_loop.py` (propose / verify / demo / promote). |
 | [`tests/`](tests/) | Contract tests, loop tests, and the verification gate (`tests/gate`). |
-| [`docs/`](docs/) | [Defense comparison](docs/DEFENSE_COMPARISON.md), [feedback loop](docs/FEEDBACK_LOOP.md). |
+| [`docs/`](docs/) | [Defense comparison](docs/DEFENSE_COMPARISON.md), [feedback loop](docs/FEEDBACK_LOOP.md), [MCP proxy](docs/MCP_PROXY.md). |
 
 `redteam/` and `gateway/` were imported with their full git history and each
 keeps its own README with setup details.
@@ -63,7 +66,7 @@ environment:
 
 ```bash
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
-pip install -r redteam/requirements.txt -r gateway/requirements.txt
+pip install -r redteam/requirements.txt -r gateway/requirements.txt -r mcp_proxy/requirements.txt
 ```
 
 **Tests**
@@ -71,6 +74,8 @@ pip install -r redteam/requirements.txt -r gateway/requirements.txt
 ```bash
 pytest tests/schemas tests/integration tests/loop   # contracts + loop (repo root)
 pytest tests/gate               # verification gate; the OPA backend needs OPA_URL (CI sets REQUIRE_OPA=1)
+pytest tests/mcp_proxy          # MCP proxy against the real gateway engine
+python scripts/demo_mcp_proxy.py   # same checks with real processes (uses port 8010)
 (cd redteam && pytest tests)    # red-team engine and target agent
 (cd gateway && python scripts/generate_agent_keys.py && pytest)   # OPA/Redis/Postgres tests skip if absent
 ```
@@ -93,6 +98,15 @@ python scripts/run_loop.py demo    --work .aravex-loop
 ```
 
 Both scripts create throwaway databases and use ports 8000 and 8001.
+
+**Gate any MCP server.** The proxy sits between an MCP client and a stdio MCP
+server. Tool calls reach the server only if the gateway allows them; anything else,
+including a gateway that cannot be reached, is refused. [Setup and mapping](docs/MCP_PROXY.md):
+
+```bash
+ARAVEX_API_KEY=... python -m aravex_mcp --gateway-url http://localhost:8000 \
+    --agent-id nova-assistant --mapping mcp_proxy/mapping.example.yaml -- <upstream command>
+```
 
 ## How the pieces connect
 
@@ -118,7 +132,7 @@ Both scripts create throwaway databases and use ports 8000 and 8001.
 ## Status and known limits
 
 Working: both services, the shared contracts, the protected-target mode, the
-comparison, and the propose / approve / verify loop, all under CI.
+comparison, the propose / approve / verify loop, and the MCP proxy, all under CI.
 
 Not done yet:
 
@@ -127,7 +141,11 @@ Not done yet:
 - The benign-action set is a small hand-written list; a rule is only as safe as
   that list is complete.
 - Measurements use the offline stand-in model. Real-model results are untested.
-- The gateway is not yet exposed as an MCP proxy.
+- The MCP proxy gates tool calls only (not tool descriptions or results), handles
+  stdio only, and has not been run against a real third-party server yet. See its
+  [limits](docs/MCP_PROXY.md#limits).
+- The gateway's approval endpoints have no authentication, so waiting for a human
+  approval through the proxy is off by default.
 - The dashboards of the two services are still separate; there is no unified one.
 - `test_cli_unreachable_target_fails_cleanly` assumes port 1 is closed and fails
   on machines where something listens there. It passes in CI.

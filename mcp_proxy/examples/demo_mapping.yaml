@@ -1,0 +1,24 @@
+# Mapping for mcp_proxy/examples/demo_upstream.py. shell_exec is left out on purpose:
+# an unmapped tool is refused by the gateway.
+server: demo
+internal_domains: [example.com]
+
+tools:
+  read_file:
+    tool_id: filesystem_tool
+    action: read
+    resource: "filesystem.{path}"
+  send_email:
+    tool_id: email_tool
+    action: send
+    resource: "email.{to}"
+    destination_from: to
+    payload_from: [subject, body]
+  get_secret:
+    tool_id: secrets_tool
+    action: read
+    resource: "secrets.{name}"
+  env_probe:
+    tool_id: filesystem_tool
+    action: read
+    resource: "filesystem.env_probe"

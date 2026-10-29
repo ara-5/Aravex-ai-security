@@ -1,0 +1,36 @@
+name: MCP Proxy CI
+
+# The proxy must refuse everything the gateway does not clearly allow, and a refused
+# call must never reach the upstream server. Runs the in-process tests, then the
+# same checks with real processes (gateway over HTTP, proxy CLI over stdio).
+on:
+  push:
+    branches: [main]
+    paths: ['mcp_proxy/**', 'tests/mcp_proxy/**', 'scripts/demo_mcp_proxy.py', 'scripts/compare_defense.py',
+            'gateway/gateway/**', 'policies/**', 'pytest.ini', '.github/**']
+  pull_request:
+    paths: ['mcp_proxy/**', 'tests/mcp_proxy/**', 'scripts/demo_mcp_proxy.py', 'scripts/compare_defense.py',
+            'gateway/gateway/**', 'policies/**', 'pytest.ini', '.github/**']
+
+jobs:
+  proxy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: |
+            gateway/requirements.txt
+            mcp_proxy/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r gateway/requirements.txt -r mcp_proxy/requirements.txt
+
+      - name: Proxy tests (in process)
+        run: pytest tests/mcp_proxy -q
+
+      - name: End to end with real processes
+        run: python scripts/demo_mcp_proxy.py

@@ -1,0 +1,50 @@
+# Maps the tools of one upstream MCP server onto the gateway's vocabulary.
+#
+# The gateway decides from: tool_id (must be registered and allowed for the agent in
+# gateway/gateway/identity/agents.yaml), action, and resource. The text before the
+# first '.' of `resource` is the category the agent's permissions are checked against
+# (filesystem.read, email.send, secrets.read, ...).
+#
+# Describe what the call DOES, not what you hope it does. Rules and permissions
+# live in the gateway, not here.
+#
+# A tool with no entry is still sent to the gateway under an id nobody holds, so it
+# is refused and the refusal is audited. Unknown keys and bad values are errors.
+
+server: filesystem-demo          # appears in audit records for unmapped tools
+
+# Addresses/URLs whose host is exactly one of these count as internal. Every
+# recipient must match, anything else (or a missing value) is external_api.
+internal_domains: [example.com]
+
+tools:
+  read_file:
+    tool_id: filesystem_tool
+    action: read
+    resource: "filesystem.{path}"      # {path} is replaced by the call's `path` argument
+
+  write_file:
+    tool_id: filesystem_tool
+    action: write
+    resource: "filesystem.{path}"
+    payload_from: [content]            # copied into payload_preview for DLP/injection checks
+
+  send_email:
+    tool_id: email_tool
+    action: send
+    resource: "email.{to}"
+    destination_from: to               # external_api unless every address is internal
+    payload_from: [subject, body]
+
+  query_customers:
+    tool_id: customer_db_tool
+    action: read
+    resource: "customer_db.records"
+    data_classification: SENSITIVE
+    record_count_from: ids             # a list's length, or an integer
+    payload_from: [query]
+
+  get_secret:                          # mapped so the gateway can name the rule that refuses it
+    tool_id: secrets_tool
+    action: read
+    resource: "secrets.{name}"
