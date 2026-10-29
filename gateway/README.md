@@ -1,7 +1,7 @@
 # AegisAI -- Runtime Security Gateway for Autonomous AI Agents
 
 [![CI](https://github.com/ara-5/AI-Runtime-Security-Zero-Trust-Agent-Platform/actions/workflows/ci.yml/badge.svg)](https://github.com/ara-5/AI-Runtime-Security-Zero-Trust-Agent-Platform/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: Proprietary](https://img.shields.io/badge/License-All%20rights%20reserved-lightgrey.svg)](../LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](requirements.txt)
 [![OPA](https://img.shields.io/badge/policy--engine-OPA%2FRego-7d9fff.svg)](gateway/policy/rego/guardrails.rego)
 [![Docker Compose](https://img.shields.io/badge/docker--compose-ready-2496ED.svg)](docker-compose.yml)

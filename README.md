@@ -41,4 +41,4 @@ mitigates and which it does not.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+Proprietary. All rights reserved. See [LICENSE](LICENSE).
