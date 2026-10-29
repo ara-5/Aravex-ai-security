@@ -46,13 +46,56 @@ is not something a gateway rule can stop. Finding #10 (a plain customer-DB read)
 is indistinguishable from legitimate use by rule, so the loop correctly refused
 to propose one.
 
+## From approval to CI
+
+`python scripts/run_loop.py promote --work DIR` moves rules that are approved by a
+named reviewer **and** verified blocked into `policies/`:
+
+| File | Purpose |
+|---|---|
+| `policies/approved_rules.yaml` | The rules the gateway loads via `ARAVEX_EXTRA_RULES` |
+| `policies/approvals.json` | Who approved each rule, and why it was proposed |
+| `policies/gate_baseline.json` | Findings that must stay blocked |
+
+`promote` refuses a rule with no reviewer, one that was only auto-approved by
+`demo`, or one that was not verified blocked.
+
+## Works under OPA as well as the YAML matcher
+
+The gateway translates the extra rules to Rego (`gateway/policy/rego_export.py`) and
+installs them on the OPA server at startup through OPA's REST API. Only the
+conditions the YAML matcher supports are translated; anything else is refused
+rather than guessed. If OPA is unreachable the gateway falls back to the YAML
+matcher, which already has the rules. If OPA is reachable but rejects the module,
+startup fails, because carrying on would run OPA without rules the operator
+believes are active. Each proposal carries its Rego so a reviewer sees both forms.
+
+Parity is tested, not assumed: for each rule shape the YAML matcher and a live OPA
+are compared over 960 generated inputs (3,840 comparisons) and must agree on every one.
+
+## The CI gate
+
+`.github/workflows/verification-gate.yml` runs `tests/gate` against a real OPA and
+fails the build when:
+
+- an approved rule stops keeping its finding blocked, under **either** backend;
+- a **control run without the rules** no longer shows the attack succeeding. A gate
+  that cannot fail proves nothing. While building it, this check caught a harness
+  bug where every call was rejected with a 401, which had made the first version
+  pass for the wrong reason;
+- the rules start blocking benign actions;
+- a rule has no named reviewer, or no baseline entry to verify it.
+
+CI sets `REQUIRE_OPA=1`, so a missing OPA fails the build instead of skipping.
+
 ## Limits
 
-- **Local YAML matcher only.** Approved rules are loaded through
-  `ARAVEX_EXTRA_RULES`. A gateway running against OPA evaluates its own Rego
-  and does not see them. Emitting Rego (`PolicyProposal.rego`) is not done.
 - **Rules are generalized from one example** (category + action + destination),
   so they can be too broad or too narrow for other cases. The benign set is a
   small hand-written list, and a rule is only as safe as that list is complete.
+- **The gate replays seed attacks** from the red-team engine, not every mutated
+  variant that found the original issue. A rule could stop the seed and miss a
+  rephrased attack.
 - **Target is the deterministic offline stand-in**, not a real model. One run.
-- **Not a CI gate yet.** The verification runs by script, not on pull requests.
+- **The gate covers rules in `policies/`.** The base policy and the least-privilege
+  identity are covered by their own tests, not by this gate.

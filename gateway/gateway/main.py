@@ -22,7 +22,7 @@ from gateway.audit.logger import log_approval_resolution, log_auth_failure, log_
 from gateway.identity.credentials import store as credential_store
 from gateway.identity.registry import registry
 from gateway.models import ActionRequest, Decision, PolicyDecision
-from gateway.policy.engine import engine
+from gateway.policy.engine import engine, sync_extra_rules_to_opa
 from gateway.security.anomaly import tracker as anomaly_tracker
 from gateway.telemetry import metrics
 from gateway.telemetry.otel import get_tracer
@@ -38,6 +38,9 @@ async def lifespan(_app: FastAPI):
             "every /v1/agent-action call will be rejected with 401. "
             "Run `python scripts/generate_agent_keys.py` to mint credentials."
         )
+    installed = sync_extra_rules_to_opa()
+    if installed:
+        _startup_logger.info("installed %d extra rule(s) on OPA", installed)
     yield
 
 

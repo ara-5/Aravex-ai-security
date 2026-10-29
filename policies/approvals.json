@@ -1,0 +1,9 @@
+[
+  {
+    "rule_id": "aravex_gen_9_1",
+    "proposal_id": "prop-9-1",
+    "finding_id": "9",
+    "reviewed_by": "ara",
+    "rationale": "access on iam (destination internal) was executed during a successful 'mcp_attacks' attack."
+  }
+]

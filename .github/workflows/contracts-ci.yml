@@ -17,4 +17,4 @@ jobs:
           python-version: "3.11"
       - run: pip install -r gateway/requirements.txt
       - name: Contract and loop tests (schemas, gateway/red-team compatibility, rule synthesis)
-        run: pytest -q
+        run: pytest tests/schemas tests/integration tests/loop -q

@@ -22,6 +22,9 @@ from aravex_schemas import Decision, DefenseLayer, PolicyProposal, layer_for
 _DENY_CATEGORIES = {"secrets", "iam"}
 
 
+from gateway.policy import rego_export  # noqa: E402  (gateway is on the path; see pytest.ini)
+
+
 def _category(resource: str) -> str:
     return resource.split(".", 1)[0]
 
@@ -93,5 +96,6 @@ def propose(finding_id: str, title: str, category: str, agent_id: str,
             rationale=f"{action['action']} on {_category(action['resource'])} "
                       f"(destination {action.get('destination', 'internal')}) was executed during a "
                       f"successful '{category}' attack.",
-            yaml_rule=yaml.safe_dump(rule, sort_keys=False)))
+            yaml_rule=yaml.safe_dump(rule, sort_keys=False),
+            rego=rego_export.rule_to_rego(rule)))
     return proposals, notes

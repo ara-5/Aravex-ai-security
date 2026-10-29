@@ -3,6 +3,7 @@
     python scripts/run_loop.py propose --work DIR            # find gaps, write draft rules
     python scripts/run_loop.py verify  --work DIR --approve all|id,id [--reviewer NAME]
     python scripts/run_loop.py demo    --work DIR            # both, approving every draft (demo only)
+    python scripts/run_loop.py promote --work DIR            # move approved + verified rules into policies/ for CI
 
 The subject is the deliberately over-permissioned identity ``nova-assistant-broad``,
 so there are real gaps to close. ``propose`` attacks the target behind the
@@ -184,13 +185,64 @@ def cmd_verify(work: Path, approve: str, reviewer: str) -> int:
     return 0 if not benign_blocked else 2
 
 
+POLICIES = ROOT / "policies"
+DEMO_REVIEWERS = ("unspecified", "demo auto-approve")
+
+
+def cmd_promote(work: Path) -> int:
+    """Move approved, verified-blocked rules into policies/ so CI enforces them.
+
+    Refuses rules without a real reviewer or without a 'blocked' verification.
+    """
+    import yaml
+
+    proposals = store.load(work / "proposals.json")
+    verified = {v["finding_id"]: v for v in json.loads((work / "verification.json").read_text(encoding="utf-8"))}
+    findings = {str(r["id"]): r for r in _rows(work / "redteam.db", "SELECT id, category, technique FROM findings")}
+
+    rules_file, approvals_file, baseline_file = (POLICIES / n for n in
+                                                 ("approved_rules.yaml", "approvals.json", "gate_baseline.json"))
+    rules = (yaml.safe_load(rules_file.read_text(encoding="utf-8")) or {}).get("rules", []) if rules_file.exists() else []
+    approvals = json.loads(approvals_file.read_text(encoding="utf-8")) if approvals_file.exists() else []
+    baseline = json.loads(baseline_file.read_text(encoding="utf-8"))["must_stay_blocked"] if baseline_file.exists() else []
+    have = {r["name"] for r in rules}
+
+    promoted, skipped = [], []
+    for p in proposals:
+        if p.status not in (ProposalStatus.APPROVED, ProposalStatus.ACTIVE):
+            continue
+        if not p.reviewed_by or any(d in p.reviewed_by for d in DEMO_REVIEWERS):
+            skipped.append(f"{p.id}: needs a named reviewer (got {p.reviewed_by!r})")
+        elif verified.get(p.finding_id, {}).get("outcome") != "blocked":
+            skipped.append(f"{p.id}: not verified blocked")
+        elif p.rule_id in have:
+            skipped.append(f"{p.id}: already promoted")
+        else:
+            f = findings[p.finding_id]
+            rules.append(yaml.safe_load(p.yaml_rule))
+            approvals.append({"rule_id": p.rule_id, "proposal_id": p.id, "finding_id": p.finding_id,
+                              "reviewed_by": p.reviewed_by, "rationale": p.rationale})
+            baseline.append({"category": f["category"], "technique": f["technique"],
+                             "finding_id": p.finding_id, "rule_id": p.rule_id})
+            promoted.append(p.rule_id)
+
+    POLICIES.mkdir(exist_ok=True)
+    rules_file.write_text(yaml.safe_dump({"rules": rules}, sort_keys=False), encoding="utf-8")
+    approvals_file.write_text(json.dumps(approvals, indent=2) + "\n", encoding="utf-8")
+    baseline_file.write_text(json.dumps({"must_stay_blocked": baseline}, indent=2) + "\n", encoding="utf-8")
+    print(f"promoted: {promoted or 'none'}")
+    for s in skipped:
+        print(f"  skipped {s}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("propose", "verify", "demo"):
+    for name in ("propose", "verify", "demo", "promote"):
         p = sub.add_parser(name)
         p.add_argument("--work", type=Path, default=Path(".aravex-loop"))
-        if name != "propose":
+        if name in ("verify", "demo"):
             p.add_argument("--reviewer", default="unspecified")
         if name == "verify":
             p.add_argument("--approve", required=True, help="'all' or comma-separated proposal ids")
@@ -200,6 +252,8 @@ def main() -> int:
         return cmd_propose(work)
     if a.cmd == "verify":
         return cmd_verify(work, a.approve, a.reviewer)
+    if a.cmd == "promote":
+        return cmd_promote(work)
     rc = cmd_propose(work)
     return rc or cmd_verify(work, "all", f"{a.reviewer} (demo auto-approve)")
 

@@ -92,6 +92,31 @@ def load_active_rules() -> list[Rule]:
     return rules
 
 
+def sync_extra_rules_to_opa() -> int:
+    """Make ARAVEX_EXTRA_RULES apply under OPA as well as the local matcher.
+
+    Converts the extra rules to Rego and installs them on the OPA server.
+    Returns how many rules were installed (0 when OPA or the file is not
+    configured). If OPA is unreachable the engine will use the local matcher,
+    which already has the rules, so that is only a warning. If OPA is reachable
+    but refuses the policy, this raises: continuing would run OPA without rules
+    the operator believes are active.
+    """
+    extra = os.environ.get("ARAVEX_EXTRA_RULES")
+    if not extra or not opa_client.is_configured():
+        return 0
+    from gateway.policy import rego_export
+
+    raw = yaml.safe_load(Path(extra).read_text()) or {}
+    rules = raw.get("rules", [])
+    try:
+        opa_client.put_policy(rego_export.POLICY_ID, rego_export.rules_to_rego(rules))
+    except opa_client.OPAUnavailable as exc:
+        _log.warning("OPA unreachable (%s); extra rules apply via the local matcher only", exc)
+        return 0
+    return len(rules)
+
+
 class PolicyEngine:
     def __init__(
         self,

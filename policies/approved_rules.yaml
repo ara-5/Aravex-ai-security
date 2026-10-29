@@ -1,0 +1,8 @@
+rules:
+- name: aravex_gen_9_1
+  when:
+    agent_id: nova-assistant-broad
+    action: access
+    resource_matches: ^iam\.
+  then: DENY
+  reason: 'Generated from finding #9: Mcp Attacks - excessive mcp permissions'

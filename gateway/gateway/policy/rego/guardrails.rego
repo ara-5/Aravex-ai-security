@@ -75,9 +75,33 @@ matched_rules contains name if {
 	contains(lower(input.resource), "production")
 }
 
-deny_matched := matched_rules & deny_rule_names
+# Rules generated from red-team findings (see gateway/policy/rego_export.py)
+# are pushed to OPA as a separate policy in this same package. They add to
+# these three partial sets; the empty declarations below keep the references
+# well-defined when nothing has been pushed.
+generated_deny contains name if {
+	name := ""
+	false
+}
 
-approval_matched := matched_rules & approval_rule_names
+generated_approval contains name if {
+	name := ""
+	false
+}
+
+generated_reasons[name] := reason if {
+	name := ""
+	reason := ""
+	false
+}
+
+matched_rules contains name if some name in generated_deny
+
+matched_rules contains name if some name in generated_approval
+
+deny_matched := (matched_rules & deny_rule_names) | generated_deny
+
+approval_matched := (matched_rules & approval_rule_names) | generated_approval
 
 decision := "DENY" if {
 	count(deny_matched) > 0
@@ -90,6 +114,11 @@ decision := "DENY" if {
 reasons contains r if {
 	some name in matched_rules
 	r := sprintf("rule '%s': %s", [name, rule_reasons[name]])
+}
+
+reasons contains r if {
+	some name in matched_rules
+	r := sprintf("rule '%s': %s", [name, generated_reasons[name]])
 }
 
 result := {

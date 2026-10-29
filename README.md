@@ -48,8 +48,9 @@ was actually measured.
 | [`gateway/`](gateway/) | Runtime gateway (from AegisAI): agent identity and IAM, rule engine (local YAML or OPA/Rego), risk scoring, DLP and injection detectors, human-approval queue, audit log, Prometheus/Grafana. |
 | [`schemas/`](schemas/) | Shared contracts: `AgentAction`, `PolicyDecision`, `Finding`, `PolicyProposal`, `VerificationResult`, and the category-to-defense-layer map. |
 | [`loop/`](loop/) | The feedback loop: rule synthesis, benign-action check, proposal store, verification records. |
-| [`scripts/`](scripts/) | `compare_defense.py` (bare vs. protected) and `run_loop.py` (propose / verify / demo). |
-| [`tests/`](tests/) | Contract tests (schemas against the real gateway and red-team shapes) and loop tests. |
+| [`policies/`](policies/) | Approved, verified gateway rules, who approved them, and the findings they must keep blocked. |
+| [`scripts/`](scripts/) | `compare_defense.py` (bare vs. protected) and `run_loop.py` (propose / verify / demo / promote). |
+| [`tests/`](tests/) | Contract tests, loop tests, and the verification gate (`tests/gate`). |
 | [`docs/`](docs/) | [Defense comparison](docs/DEFENSE_COMPARISON.md), [feedback loop](docs/FEEDBACK_LOOP.md). |
 
 `redteam/` and `gateway/` were imported with their full git history and each
@@ -68,7 +69,8 @@ pip install -r redteam/requirements.txt -r gateway/requirements.txt
 **Tests**
 
 ```bash
-pytest                          # contracts + loop (repo root)
+pytest tests/schemas tests/integration tests/loop   # contracts + loop (repo root)
+pytest tests/gate               # verification gate; the OPA backend needs OPA_URL (CI sets REQUIRE_OPA=1)
 (cd redteam && pytest tests)    # red-team engine and target agent
 (cd gateway && python scripts/generate_agent_keys.py && pytest)   # OPA/Redis/Postgres tests skip if absent
 ```
@@ -101,8 +103,14 @@ Both scripts create throwaway databases and use ports 8000 and 8001.
   off by default, so the vulnerable baseline is unchanged.
 - **Identities.** `nova-assistant` is least-privilege. `nova-assistant-broad`
   is deliberately over-permissioned and exists only as the loop's starting point.
-- **Approved rules** load through `ARAVEX_EXTRA_RULES` after the base rules and
-  cannot override them.
+- **Approved rules** live in `policies/` and load through `ARAVEX_EXTRA_RULES`
+  after the base rules, so they cannot override them. They apply under both the
+  local YAML matcher and OPA: the gateway converts them to Rego and installs them
+  on the OPA server at startup.
+- **The verification gate** (`tests/gate`, run by `verification-gate.yml`) replays
+  each promoted finding's attack against both backends on every change and fails
+  if it succeeds again. It also fails if a control run without the rules stops
+  showing the attack succeeding, so the gate cannot pass vacuously.
 - **Success is ground truth.** The red-team judges read the target's actual
   state (outbox, MCP exfiltration log, granted scopes, executed tool calls), not
   the reply text.
@@ -114,9 +122,8 @@ comparison, and the propose / approve / verify loop, all under CI.
 
 Not done yet:
 
-- Approved rules apply only to the local YAML matcher. A gateway running against
-  OPA does not see them until Rego is emitted as well.
-- The loop is a script, not yet a CI gate on pull requests.
+- The gate replays the red-team engine's seed attacks, not every mutated variant,
+  so a rule could stop the seed and miss a rephrasing.
 - The benign-action set is a small hand-written list; a rule is only as safe as
   that list is complete.
 - Measurements use the offline stand-in model. Real-model results are untested.

@@ -1,0 +1,10 @@
+{
+  "must_stay_blocked": [
+    {
+      "category": "mcp_attacks",
+      "technique": "excessive_mcp_permissions",
+      "finding_id": "9",
+      "rule_id": "aravex_gen_9_1"
+    }
+  ]
+}

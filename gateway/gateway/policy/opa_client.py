@@ -49,6 +49,32 @@ def _get_client(base_url: str) -> httpx.Client:
     return _client
 
 
+def put_policy(policy_id: str, rego: str, timeout: float = 5.0) -> None:
+    """Install (or replace) a policy module on the OPA server via its REST API.
+
+    Raises OPAUnavailable if OPA cannot be reached, and PolicyRejected if OPA
+    answers but refuses the module (e.g. it does not compile). The two are
+    different failures: an unreachable OPA means the engine falls back to the
+    local rules, while a rejected module means OPA is running *without* these
+    rules, which callers must not ignore.
+    """
+    base_url = os.environ.get("OPA_URL")
+    if not base_url:
+        raise OPAUnavailable("OPA_URL is not configured")
+    try:
+        response = _get_client(base_url).put(
+            f"/v1/policies/{policy_id}", content=rego.encode("utf-8"),
+            headers={"Content-Type": "text/plain"}, timeout=timeout)
+    except httpx.HTTPError as exc:
+        raise OPAUnavailable(str(exc)) from exc
+    if response.status_code != 200:
+        raise PolicyRejected(f"OPA rejected policy '{policy_id}' ({response.status_code}): {response.text[:500]}")
+
+
+class PolicyRejected(Exception):
+    """OPA is reachable but refused a policy module."""
+
+
 def evaluate(input_doc: dict, timeout: float = 2.0) -> dict:
     """Returns {"decision": "DENY"|"HUMAN_APPROVAL"|"NONE", "matched_rules": [...], "reasons": [...]}.
 
