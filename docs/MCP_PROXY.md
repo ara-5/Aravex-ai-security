@@ -105,8 +105,9 @@ last address). Each was caught.
 - **stdio only,** on both sides. No HTTP/SSE transport yet.
 - **One identity per proxy process,** and no session context: each call is judged on
   its own, apart from what the gateway's anomaly tracker sees for that agent.
-- **Approval waiting depends on the approver key staying with people.** The gateway
-  now requires `GATEWAY_APPROVER_KEY` to list or resolve approvals, and the proxy only
+- **Approval waiting depends on approver keys staying with people.** The gateway
+  now requires an approver key (`GATEWAY_APPROVER_KEYS`, one per person) to list or
+  resolve approvals, and the proxy only
   polls with the agent's own key, which can read that agent's approval status and
   nothing more. If the approver key is set on the agent's machine, the protection is
   gone. Waiting is still off by default.

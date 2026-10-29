@@ -150,10 +150,14 @@ Then check:
 - `logs/audit.log` -- every decision as a structured JSON line
 - `http://127.0.0.1:8000/metrics` -- Prometheus metrics
 - `http://127.0.0.1:8000/v1/approvals` -- pending human-approval queue. Needs the approver
-  credential: set `GATEWAY_APPROVER_KEY` before starting the gateway and send it as a bearer token.
-  It is separate from every agent key, so an agent cannot approve its own request. With the
-  variable unset the approval endpoints answer 503 (disabled), not open. An agent's own key can
-  read the status of its own approval (`GET /v1/approvals/{id}`) and nothing else there.
+  credential. Give each approver their own key before starting the gateway:
+  `GATEWAY_APPROVER_KEYS="jane:<key>,omar:<key>"` (names: letters, digits, `_ . @ -`), and send it
+  as a bearer token. The audit log and the approval record name the approver the key belongs to,
+  never a name typed in the request (a `approver` field in the body is optional and rejected
+  with 400 if it differs). The older single `GATEWAY_APPROVER_KEY` still works as the identity
+  `approver`. Approver keys are separate from agent keys, so an agent cannot approve its own
+  request, and with none configured the endpoints answer 503 (disabled), not open. An agent's
+  own key can read the status of its own approval (`GET /v1/approvals/{id}`) and nothing else there.
 - `http://127.0.0.1:8000/v1/agents` -- the registered agent identities and their permissions
 
 ## Run the full stack (gateway + OPA + Redis + Postgres + Prometheus + Grafana)

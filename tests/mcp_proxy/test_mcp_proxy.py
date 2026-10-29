@@ -246,7 +246,7 @@ async def _resolve_when_pending(gateway, table, approved):
         approval_id = await asyncio.to_thread(_pending, gateway, table)
         if approval_id:
             await asyncio.to_thread(
-                gateway.post, f"/v1/approvals/{approval_id}/decision", json={"approver": "ara", "approved": approved},
+                gateway.post, f"/v1/approvals/{approval_id}/decision", json={"approved": approved},
                 headers=APPROVER)
             return
         await asyncio.sleep(0.02)

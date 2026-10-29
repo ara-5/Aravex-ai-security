@@ -67,7 +67,9 @@ class GatewayClient:
     def resolve_approval(self, approval_id: str, approver: str, approved: bool) -> dict:
         response = self._client.post(
             f"/v1/approvals/{approval_id}/decision",
-            json={"approver": approver, "approved": approved},
+            # No name is sent: the gateway records the approver the key belongs to, so
+            # `approver` here is informational only.
+            json={"approved": approved},
             headers={"Authorization": f"Bearer {os.environ.get('GATEWAY_APPROVER_KEY', '')}"},
         )
         response.raise_for_status()

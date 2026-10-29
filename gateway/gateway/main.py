@@ -11,6 +11,7 @@ from __future__ import annotations
 import hmac
 import logging
 import os
+import re
 from contextlib import asynccontextmanager
 from typing import Annotated
 
@@ -126,7 +127,7 @@ def agent_action(request: Annotated[ActionRequest, Depends(authenticate_agent)])
 
 
 class ApprovalResolutionRequest(BaseModel):
-    approver: str
+    approver: str | None = None  # optional; if given it must match the authenticated approver
     approved: bool
 
 
@@ -136,21 +137,47 @@ def _bearer(authorization: str | None) -> str:
     return ""
 
 
-def _is_approver(token: str) -> bool:
-    expected = os.environ.get("GATEWAY_APPROVER_KEY", "")
-    return bool(expected) and bool(token) and hmac.compare_digest(token.encode(), expected.encode())
+_APPROVER_NAME = re.compile(r"^[A-Za-z0-9_.@-]+$")
 
 
-def require_approver(authorization: Annotated[str | None, Header()] = None) -> None:
+def _approvers() -> dict[str, str]:
+    """name -> key. GATEWAY_APPROVER_KEYS is "name:key,name:key"; the older single
+    GATEWAY_APPROVER_KEY is accepted as the identity "approver". Malformed entries
+    are ignored, so a typo cannot create an approver with an empty key."""
+    found: dict[str, str] = {}
+    for entry in os.environ.get("GATEWAY_APPROVER_KEYS", "").split(","):
+        name, _, key = entry.strip().partition(":")
+        if name and key and _APPROVER_NAME.match(name):
+            found[name] = key
+    legacy = os.environ.get("GATEWAY_APPROVER_KEY", "")
+    if legacy:
+        found.setdefault("approver", legacy)
+    return found
+
+
+def _approver_identity(token: str) -> str | None:
+    """The approver this token belongs to, or None. Every key is compared so the
+    time taken does not depend on which one matched."""
+    who = None
+    for name, key in _approvers().items():
+        if token and hmac.compare_digest(token.encode(), key.encode()):
+            who = name
+    return who
+
+
+def require_approver(authorization: Annotated[str | None, Header()] = None) -> str:
     """Resolving approvals is the human-oversight control, so it needs its own
     credential, separate from every agent key: an agent must never be able to
-    approve its own request. Fails closed: with GATEWAY_APPROVER_KEY unset the
-    approval endpoints are disabled rather than open."""
-    if not os.environ.get("GATEWAY_APPROVER_KEY"):
-        raise HTTPException(status_code=503, detail="GATEWAY_APPROVER_KEY is not set; approval endpoints are disabled")
-    if not _is_approver(_bearer(authorization)):
+    approve its own request. Each approver has a key of their own, and the
+    returned name is what the audit trail records. Fails closed: with no approver
+    keys configured the approval endpoints are disabled rather than open."""
+    if not _approvers():
+        raise HTTPException(status_code=503, detail="no approver keys configured; approval endpoints are disabled")
+    who = _approver_identity(_bearer(authorization))
+    if who is None:
         log_auth_failure("approver", "missing or invalid approver credential")
         raise HTTPException(status_code=401, detail="approver credential required")
+    return who
 
 
 @app.get("/v1/approvals", dependencies=[Depends(require_approver)])
@@ -164,7 +191,7 @@ def get_approval(approval_id: str, authorization: Annotated[str | None, Header()
     own, so the caller can poll. Unknown id and wrong credential look the same."""
     token = _bearer(authorization)
     record = approval_manager.get(approval_id)
-    if _is_approver(token):
+    if _approver_identity(token):
         if record is None:
             raise HTTPException(status_code=404, detail="approval not found")
         return record.model_dump()
@@ -173,15 +200,20 @@ def get_approval(approval_id: str, authorization: Annotated[str | None, Header()
     return record.model_dump()
 
 
-@app.post("/v1/approvals/{approval_id}/decision", dependencies=[Depends(require_approver)])
-def resolve_approval(approval_id: str, body: ApprovalResolutionRequest) -> dict:
+@app.post("/v1/approvals/{approval_id}/decision")
+def resolve_approval(approval_id: str, body: ApprovalResolutionRequest,
+                     approver: Annotated[str, Depends(require_approver)]) -> dict:
+    """The approver recorded is the one the credential belongs to, never a name
+    the caller typed."""
+    if body.approver is not None and body.approver != approver:
+        raise HTTPException(status_code=400, detail="approver in the body does not match the credential")
     record = approval_manager.get(approval_id)
     if record is None:
         raise HTTPException(status_code=404, detail="approval not found")
     if record.status != ApprovalStatus.PENDING:
         raise HTTPException(status_code=409, detail=f"approval already {record.status.value}")
 
-    resolved = approval_manager.resolve(approval_id, body.approver, body.approved)
+    resolved = approval_manager.resolve(approval_id, approver, body.approved)
     metrics.PENDING_APPROVALS.set(approval_manager.pending_count())
-    log_approval_resolution(approval_id, body.approver, body.approved, resolved.decision)
+    log_approval_resolution(approval_id, approver, body.approved, resolved.decision)
     return resolved.model_dump()

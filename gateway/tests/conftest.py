@@ -19,16 +19,17 @@ TEST_AGENT_KEYS = {
 }
 
 
-TEST_APPROVER_KEY = "test-approver-key"
+TEST_APPROVER_KEYS = {"jane": "jane-approver-key", "omar": "omar-approver-key"}
 
 
-def approver_headers() -> dict[str, str]:
-    return {"Authorization": f"Bearer {TEST_APPROVER_KEY}"}
+def approver_headers(name: str = "jane") -> dict[str, str]:
+    return {"Authorization": f"Bearer {TEST_APPROVER_KEYS[name]}"}
 
 
 @pytest.fixture
 def approver_configured(monkeypatch):
-    monkeypatch.setenv("GATEWAY_APPROVER_KEY", TEST_APPROVER_KEY)
+    monkeypatch.delenv("GATEWAY_APPROVER_KEY", raising=False)
+    monkeypatch.setenv("GATEWAY_APPROVER_KEYS", ",".join(f"{n}:{k}" for n, k in TEST_APPROVER_KEYS.items()))
 
 
 @pytest.fixture(autouse=True)
