@@ -2,56 +2,138 @@
 
 **Attack. Defend. Verify.**
 
-Aravex is one platform for securing AI agents end to end: an autonomous
-red-team engine that attacks an agent system, a zero-trust runtime gateway
-that bounds what a compromised agent can do, and a regression gate that proves
-the defense holds.
+[![Red-team CI](https://github.com/ara-5/Aravex-ai-security/actions/workflows/redteam-ci.yml/badge.svg)](https://github.com/ara-5/Aravex-ai-security/actions/workflows/redteam-ci.yml)
+[![Gateway CI](https://github.com/ara-5/Aravex-ai-security/actions/workflows/gateway-ci.yml/badge.svg)](https://github.com/ara-5/Aravex-ai-security/actions/workflows/gateway-ci.yml)
+[![Contracts CI](https://github.com/ara-5/Aravex-ai-security/actions/workflows/contracts-ci.yml/badge.svg)](https://github.com/ara-5/Aravex-ai-security/actions/workflows/contracts-ci.yml)
+![License: All rights reserved](https://img.shields.io/badge/License-All%20rights%20reserved-lightgrey.svg)
+
+Aravex secures AI agents end to end. A red-team engine attacks an agent system
+and records what worked. A zero-trust gateway sits between the agent and
+everything it can touch, deciding allow, deny or human approval for each tool
+call. A feedback loop turns findings into draft gateway rules, a person
+approves them, and the attacks are replayed to prove the rules hold.
 
 ```
- redteam/  ──attacks──▶  target agent  ──tool calls──▶  gateway/  ──▶ tools, data, MCP
-    │                                                       │
-    └──────── findings ──▶ policies ──▶ regression gate ◀───┘
+                     ┌──────────────── findings ────────────────┐
+                     ▼                                          │
+ red-team engine ──attacks──▶ target agent ──tool calls──▶ gateway ──▶ tools, data, MCP
+                                                              │
+        draft rules ◀── human approval ◀── rule synthesis ◀───┘
+              │
+              └──▶ active rules ──▶ replay every attack ──▶ VerificationResult
 ```
 
-## Layout
+## What is measured so far
 
-| Path | Origin | Role |
-|---|---|---|
-| [`redteam/`](redteam/) | AgentShield | Agentic red-team engine, 11 attack families, scorecard, dashboard, CI regression gate, plus the deliberately vulnerable `target_agent` |
-| [`gateway/`](gateway/) | AegisAI | Zero-trust gateway: agent IAM, OPA/Rego policy engine, risk scoring, human approval, audit, observability |
-| [`schemas/`](schemas/) | new | Shared contracts (`AgentAction`, `PolicyDecision`, `Finding`, `PolicyProposal`, `VerificationResult`) that let the two halves exchange data |
-| [`tests/`](tests/) | new | Contract tests proving the shared schemas accept what both projects already produce |
+All results are from the deterministic offline stand-in model that the target
+agent ships with, not a real LLM, and each is a single run. Treat them as a
+demonstration that the mechanism works, not as an effectiveness claim.
 
-Both projects were imported with full git history and still run as before;
-see the README in each directory for setup.
+| Experiment | Result |
+|---|---|
+| Same 11-category campaign, bare vs. behind the gateway (least-privilege identity) | **19 successful attacks → 6.** Every gateway-addressable category went to zero; the 6 left are model-level or partly visible ones. [Details](docs/DEFENSE_COMPARISON.md) |
+| Feedback loop on an over-permissioned identity | 10 open findings → 1 draft rule → approved → **1 finding verified blocked**, 5 of 5 benign actions still allowed. The other 9 are model-level, have no tool call to act on, or look identical to legitimate use. [Details](docs/FEEDBACK_LOOP.md) |
 
-## Status
+The gateway cannot stop everything. Jailbreaks and system-prompt extraction
+happen inside the model, and a rule that stops an attack by also stopping
+normal work is rejected rather than shipped. The repo tracks which categories a
+gateway can address (`schemas/aravex_schemas/coverage.py`) separately from what
+was actually measured.
 
-Early integration. The two halves share a tested set of contracts
-(`schemas/`), and the target agent can run behind the gateway
-(`GATEWAY_MODE=enforce`). A first comparison on the 11-category campaign:
-**19 successful attacks bare, 6 behind the gateway**, with every
-gateway-addressable category at zero. See
-[docs/DEFENSE_COMPARISON.md](docs/DEFENSE_COMPARISON.md) for method and caveats;
-reproduce with `python scripts/compare_defense.py`.
+## Repository layout
 
-The feedback loop also runs: findings become draft gateway rules, a person
-approves them, and every finding's attack is replayed to verify. In one run
-against an over-permissioned identity, 1 of 10 findings had a safe, rule-fixable
-cause and was verified blocked; the rest are model-level or indistinguishable
-from legitimate use. See [docs/FEEDBACK_LOOP.md](docs/FEEDBACK_LOOP.md).
+| Path | What it is |
+|---|---|
+| [`redteam/`](redteam/) | Red-team engine (from AgentShield): planner, 11 attack families, ground-truth judges, scorecard, dashboard, regression runner. Also holds `target_agent/`, a deliberately vulnerable multi-agent assistant, with an optional gateway guard (`GATEWAY_MODE=enforce`). |
+| [`gateway/`](gateway/) | Runtime gateway (from AegisAI): agent identity and IAM, rule engine (local YAML or OPA/Rego), risk scoring, DLP and injection detectors, human-approval queue, audit log, Prometheus/Grafana. |
+| [`schemas/`](schemas/) | Shared contracts: `AgentAction`, `PolicyDecision`, `Finding`, `PolicyProposal`, `VerificationResult`, and the category-to-defense-layer map. |
+| [`loop/`](loop/) | The feedback loop: rule synthesis, benign-action check, proposal store, verification records. |
+| [`scripts/`](scripts/) | `compare_defense.py` (bare vs. protected) and `run_loop.py` (propose / verify / demo). |
+| [`tests/`](tests/) | Contract tests (schemas against the real gateway and red-team shapes) and loop tests. |
+| [`docs/`](docs/) | [Defense comparison](docs/DEFENSE_COMPARISON.md), [feedback loop](docs/FEEDBACK_LOOP.md). |
 
-Next:
+`redteam/` and `gateway/` were imported with their full git history and each
+keeps its own README with setup details.
 
-1. Emit Rego as well as YAML, so approved rules also apply under OPA.
-2. Run the verification as a CI gate against gateway policies.
-3. Expose the gateway as an MCP proxy.
+## Try it
 
-Not every attack family is addressable at the gateway: jailbreaks and
-system-prompt extraction happen inside the model and need model-level
-defenses. The comparison report will say which categories the gateway
-mitigates and which it does not.
+You need Python 3.11+. Install the dependencies of both services in one
+environment:
+
+```bash
+python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
+pip install -r redteam/requirements.txt -r gateway/requirements.txt
+```
+
+**Tests**
+
+```bash
+pytest                          # contracts + loop (repo root)
+(cd redteam && pytest tests)    # red-team engine and target agent
+(cd gateway && python scripts/generate_agent_keys.py && pytest)   # OPA/Redis/Postgres tests skip if absent
+```
+
+**Bare vs. behind the gateway.** Starts the gateway and target on local ports,
+runs the same campaign twice, and prints a per-category table:
+
+```bash
+python scripts/compare_defense.py --out report.md
+```
+
+**The feedback loop.** Attacks an over-permissioned identity, drafts rules, and
+waits for you to approve before anything is applied:
+
+```bash
+python scripts/run_loop.py propose --work .aravex-loop      # writes proposals.json
+python scripts/run_loop.py verify  --work .aravex-loop --approve prop-9-1 --reviewer you
+# or, for demos only, approve every draft:
+python scripts/run_loop.py demo    --work .aravex-loop
+```
+
+Both scripts create throwaway databases and use ports 8000 and 8001.
+
+## How the pieces connect
+
+- **Target behind the gateway.** With `GATEWAY_MODE=enforce`, every tool call
+  the target agent makes is sent to the gateway first and runs only on `ALLOW`.
+  If the gateway is unreachable, the call is refused. Refused calls are not
+  recorded as executed, so they cannot count as successful attacks. The guard is
+  off by default, so the vulnerable baseline is unchanged.
+- **Identities.** `nova-assistant` is least-privilege. `nova-assistant-broad`
+  is deliberately over-permissioned and exists only as the loop's starting point.
+- **Approved rules** load through `ARAVEX_EXTRA_RULES` after the base rules and
+  cannot override them.
+- **Success is ground truth.** The red-team judges read the target's actual
+  state (outbox, MCP exfiltration log, granted scopes, executed tool calls), not
+  the reply text.
+
+## Status and known limits
+
+Working: both services, the shared contracts, the protected-target mode, the
+comparison, and the propose / approve / verify loop, all under CI.
+
+Not done yet:
+
+- Approved rules apply only to the local YAML matcher. A gateway running against
+  OPA does not see them until Rego is emitted as well.
+- The loop is a script, not yet a CI gate on pull requests.
+- The benign-action set is a small hand-written list; a rule is only as safe as
+  that list is complete.
+- Measurements use the offline stand-in model. Real-model results are untested.
+- The gateway is not yet exposed as an MCP proxy.
+- The dashboards of the two services are still separate; there is no unified one.
+- `test_cli_unreachable_target_fails_cleanly` assumes port 1 is closed and fails
+  on machines where something listens there. It passes in CI.
+
+## Security note
+
+`redteam/target_agent` is intentionally vulnerable (plaintext secrets in its
+prompt, weak tool sandboxing, unauthenticated MCP-style tools). Never deploy it
+or its configuration pattern. Its `/admin/*` routes exist for the authorized
+red-team judge and must not be exposed beyond localhost.
 
 ## License
 
-Proprietary. All rights reserved. See [LICENSE](LICENSE).
+Proprietary. Copyright (c) 2026 ara-5. All rights reserved. See [LICENSE](LICENSE).
+Earlier versions that were published under the MIT License remain available
+under those terms to anyone who obtained them then.
