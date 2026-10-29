@@ -93,8 +93,10 @@ CI sets `REQUIRE_OPA=1`, so a missing OPA fails the build instead of skipping.
 - **Rules are generalized from one example** (category + action + destination),
   so they can be too broad or too narrow for other cases. The benign set is a
   small hand-written list, and a rule is only as safe as that list is complete.
-- **The gate replays seed attacks** from the red-team engine, not every mutated
-  variant that found the original issue. A rule could stop the seed and miss a
+- **The gate replays the seed attack and five fixed rephrasings** (audit pretext,
+  developer override, roleplay, step-by-step, spacing tricks), not the model-written
+  mutations a live campaign tries. A control run shows 4 of the 5 succeed against the
+  stand-in model without the rules, so the check is not vacuous. A rule could still miss a
   rephrased attack.
 - **Target is the deterministic offline stand-in**, not a real model. One run.
 - **The gate covers rules in `policies/`.** The base policy and the least-privilege

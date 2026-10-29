@@ -136,8 +136,9 @@ comparison, the propose / approve / verify loop, and the MCP proxy, all under CI
 
 Not done yet:
 
-- The gate replays the red-team engine's seed attacks, not every mutated variant,
-  so a rule could stop the seed and miss a rephrasing.
+- The gate replays each seed attack plus the engine's five deterministic rephrasings,
+  not the model-written mutations a live campaign would try. A rule could still miss
+  an attack phrased in a way none of those cover.
 - The benign-action set is a small hand-written list; a rule is only as safe as
   that list is complete.
 - Measurements use the offline stand-in model. Real-model results are untested.

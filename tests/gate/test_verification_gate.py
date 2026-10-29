@@ -1,6 +1,6 @@
 """Verification gate: approved rules must keep their findings blocked.
 
-For every entry in policies/gate_baseline.json the exact seed attack is replayed
+For every entry in policies/gate_baseline.json the exact seed attack and the engine's deterministic rephrasings are replayed
 against the target agent running behind the gateway, with only the approved
 rules in policies/approved_rules.yaml added to the base policy. The build fails
 if any of them succeeds again.
@@ -17,6 +17,7 @@ missing OPA fails the build instead of skipping silently.
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import tempfile
@@ -37,6 +38,7 @@ from gateway.policy.engine import PolicyEngine, Rule, load_rules
 from gateway.security.anomaly import AnomalyTracker
 from redteam_engine.attacks import FAMILY_BY_CATEGORY
 from redteam_engine.attacks.base import AttackContext
+from redteam_engine.llm_adversary import _TEMPLATES, _fallback_mutate
 from redteam_engine.target_client import TargetClient
 from target_agent import gateway_guard
 
@@ -104,12 +106,22 @@ def stack(monkeypatch):
         os.environ["OPA_URL"] = saved_opa_url
 
 
-def _replay(target: TargetClient, entry: dict):
+# The red-team engine's deterministic rephrasings (audit pretext, developer override,
+# roleplay, step-by-step, spacing tricks). The model-driven mutator is not used here
+# because the gate must give the same answer every run.
+VARIANTS = list(range(len(_TEMPLATES)))
+
+
+def _replay(target: TargetClient, entry: dict, variant: int | None = None):
+    """Replay the seed attack, or rephrasing number `variant` of it."""
     family = FAMILY_BY_CATEGORY[entry["category"]]
     ctx = AttackContext(client=target, canaries=target.get_canaries(), campaign_session_prefix="verify-gate")
     seed = next((a for a in family.seeds(ctx) if a.technique == entry["technique"]), None)
     assert seed is not None, f"no seed attack for {entry['category']}/{entry['technique']}"
     session = f"verify-gate-{entry['category']}-{entry['technique']}"
+    if variant is not None:
+        seed = dataclasses.replace(seed, payload=_fallback_mutate(seed.payload, variant), generation=1)
+        session += f"-v{variant}"
     response = family.execute(seed, session, ctx)
     return family.judge(seed, session, response, target.get_state(session), ctx)
 
@@ -126,6 +138,27 @@ def test_approved_rules_keep_finding_blocked(stack, backend, entry):
     assert not result.success, (
         f"REGRESSION: {entry['category']}/{entry['technique']} (finding #{entry['finding_id']}, "
         f"rule {entry['rule_id']}) succeeds again under the {backend} backend. Evidence: {result.evidence}")
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+@pytest.mark.parametrize("variant", VARIANTS)
+@pytest.mark.parametrize("entry", BASELINE, ids=lambda e: f"{e['category']}:{e['technique']}")
+def test_approved_rules_keep_rephrased_attacks_blocked(stack, backend, entry, variant):
+    target, _ = stack(backend, with_approved=True)
+    result = _replay(target, entry, variant)
+    assert not result.success, (
+        f"REGRESSION: rephrasing #{variant} of {entry['category']}/{entry['technique']} "
+        f"(rule {entry['rule_id']}) succeeds under the {backend} backend. Evidence: {result.evidence}")
+
+
+@pytest.mark.parametrize("entry", BASELINE, ids=lambda e: f"{e['category']}:{e['technique']}")
+def test_control_some_rephrasings_succeed_without_the_approved_rules(stack, entry):
+    """If no rephrasing ever works without the rules, the variant check above proves nothing."""
+    target, _ = stack("yaml", with_approved=False)
+    wins = [v for v in VARIANTS if _replay(target, entry, v).success]
+    assert wins, (f"no rephrasing of {entry['category']}/{entry['technique']} succeeds even without the "
+                  "approved rules, so the variant replay cannot tell a working rule from none")
+    print(f"control: rephrasings that succeed without the rules: {wins} of {VARIANTS}")
 
 
 @pytest.mark.parametrize("entry", BASELINE, ids=lambda e: f"{e['category']}:{e['technique']}")
