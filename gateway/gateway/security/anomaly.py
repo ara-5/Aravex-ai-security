@@ -156,15 +156,24 @@ def build_tracker():
     safe). Otherwise -> in-memory tracker (zero extra infrastructure)."""
     import os
 
+    # Optional overrides, e.g. for load tests or red-team campaigns whose
+    # volume would otherwise trip the detector and mask policy behaviour.
+    # Unset = the defaults above.
+    thresholds = {}
+    if os.environ.get("ANOMALY_RATE_THRESHOLD"):
+        thresholds["rate_threshold"] = int(os.environ["ANOMALY_RATE_THRESHOLD"])
+    if os.environ.get("ANOMALY_FAIL_THRESHOLD"):
+        thresholds["fail_threshold"] = int(os.environ["ANOMALY_FAIL_THRESHOLD"])
+
     redis_url = os.environ.get("REDIS_URL")
     if not redis_url:
-        return AnomalyTracker()
+        return AnomalyTracker(**thresholds)
 
     import redis as redis_lib
 
     client = redis_lib.Redis.from_url(redis_url, decode_responses=True)
     client.ping()  # fail fast at startup rather than on the first request
-    return RedisAnomalyTracker(client)
+    return RedisAnomalyTracker(client, **thresholds)
 
 
 tracker = build_tracker()

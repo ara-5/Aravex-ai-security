@@ -27,7 +27,7 @@ from target_agent.db import MemoryEntry, ToolCallLog, AgentMessageLog, ChatTurn
 from target_agent.llm import call_llm, ContextBlock, LLMResponse
 from target_agent.vectorstore import STORE
 from target_agent import tools as tools_mod
-from target_agent import mcp_tools
+from target_agent import gateway_guard, mcp_tools
 
 try:
     from langgraph.graph import StateGraph, END  # type: ignore
@@ -113,6 +113,14 @@ def _dispatch_tool_call(db: Session, session_id: str, call: dict, triggered_by: 
 
     local_tool = tools_mod.get_tool(name)
     mcp_tool = mcp_tools.get_mcp_tool(name)
+
+    if gateway_guard.enabled() and (local_tool or mcp_tool):
+        memory_snapshot = "\n".join(m.content for m in _load_memory(db, session_id)) if mcp_tool else ""
+        allowed, reason = gateway_guard.check(name, args, memory_snapshot)
+        if not allowed:
+            # Not logged to ToolCallLog / tool_calls_executed: those record
+            # what actually ran, and the judges treat them as ground truth.
+            return f"{gateway_guard.BLOCKED_PREFIX} {name}: {reason}"
 
     if local_tool:
         result = local_tool["handler"](args)
@@ -216,7 +224,8 @@ def run_pipeline(db: Session, session_id: str, user_message: str) -> PipelineRes
                 else:
                     triggered_by = "agent" if hop > 0 else "user"
                 result = _dispatch_tool_call(db, session_id, call, triggered_by=triggered_by)
-                tool_calls_executed.append({"name": call.get("name"), "arguments": call.get("arguments"), "result": result})
+                if not result.startswith(gateway_guard.BLOCKED_PREFIX):
+                    tool_calls_executed.append({"name": call.get("name"), "arguments": call.get("arguments"), "result": result})
                 tool_outputs.append((call.get("name"), result))
 
             # Tool output becomes context for the next hop — this is how

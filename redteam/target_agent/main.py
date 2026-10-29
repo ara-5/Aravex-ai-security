@@ -25,6 +25,7 @@ from target_agent.db import init_db, get_session, SessionLocal, MemoryEntry, Too
 from target_agent.vectorstore import STORE, Document
 from target_agent.seed_data import load_seed_data
 from target_agent.agents import run_pipeline
+from target_agent import gateway_guard
 from target_agent import tools as tools_mod
 from target_agent import mcp_tools
 
@@ -143,6 +144,8 @@ def state(session_id: str | None = None):
             "tool_call_logs": tool_logs,
             "agent_messages": agent_msgs,
             "rag_doc_count": len(STORE.docs),
+            "gateway_mode": "enforce" if gateway_guard.enabled() else "off",
+            "gateway_blocked": list(gateway_guard.BLOCKED_LOG),
         }
     finally:
         db.close()
@@ -160,6 +163,7 @@ def reset():
     tools_mod.OUTBOX.clear()
     mcp_tools.MCP_EXFIL_LOG.clear()
     mcp_tools.MCP_SESSION_SCOPE.clear()
+    gateway_guard.reset()
     load_seed_data()
     return {"status": "reset"}
 

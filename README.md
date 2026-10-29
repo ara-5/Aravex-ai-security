@@ -27,12 +27,20 @@ see the README in each directory for setup.
 
 ## Status
 
-Early integration. The two halves run side by side and share a tested set of contracts (`schemas/`). Planned:
+Early integration. The two halves share a tested set of contracts
+(`schemas/`), and the target agent can run behind the gateway
+(`GATEWAY_MODE=enforce`). A first comparison on the 11-category campaign:
+**19 successful attacks bare, 6 behind the gateway**, with every
+gateway-addressable category at zero. See
+[docs/DEFENSE_COMPARISON.md](docs/DEFENSE_COMPARISON.md) for method and caveats;
+reproduce with `python scripts/compare_defense.py`.
 
-1. Route `target_agent` tool calls through the gateway (protected / unprotected toggle).
-2. Report attack success with and without the gateway, per attack category.
-3. Generate candidate Rego rules from confirmed findings.
-4. Run the regression gate against gateway policies in CI.
+Next:
+
+1. Generate candidate Rego rules from confirmed findings (human-approved).
+2. Re-run the campaign to verify each rule, and record the result as a `VerificationResult`.
+3. Run that verification as a CI gate against gateway policies.
+4. Expose the gateway as an MCP proxy.
 
 Not every attack family is addressable at the gateway: jailbreaks and
 system-prompt extraction happen inside the model and need model-level

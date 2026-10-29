@@ -87,3 +87,17 @@ MAX_AGENT_HOPS = 3
 # that AgentShield can freely introspect its own authorized target. Set
 # this before exposing the service beyond localhost.
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "")
+
+# --- Runtime gateway guard (target_agent/gateway_guard.py) ---
+# "off" (default): tools run unchecked, the deliberately vulnerable baseline.
+# "enforce": every tool call is submitted to the Aravex gateway first and
+# runs only on ALLOW; anything else (or an unreachable gateway) blocks it.
+GATEWAY_MODE = os.getenv("GATEWAY_MODE", "off").strip().lower()
+GATEWAY_URL = os.getenv("GATEWAY_URL", "http://127.0.0.1:8000")
+GATEWAY_AGENT_ID = os.getenv("GATEWAY_AGENT_ID", "nova-assistant")
+GATEWAY_HUMAN_ID = os.getenv("GATEWAY_HUMAN_ID", "h-jane-owner")
+GATEWAY_API_KEY = os.getenv("GATEWAY_API_KEY", "")
+# Recipient domains treated as internal when classifying outbound email.
+GATEWAY_INTERNAL_DOMAINS = tuple(
+    d.strip().lower() for d in os.getenv("GATEWAY_INTERNAL_DOMAINS", "example.com").split(",") if d.strip()
+)
