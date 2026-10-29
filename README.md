@@ -35,12 +35,17 @@ gateway-addressable category at zero. See
 [docs/DEFENSE_COMPARISON.md](docs/DEFENSE_COMPARISON.md) for method and caveats;
 reproduce with `python scripts/compare_defense.py`.
 
+The feedback loop also runs: findings become draft gateway rules, a person
+approves them, and every finding's attack is replayed to verify. In one run
+against an over-permissioned identity, 1 of 10 findings had a safe, rule-fixable
+cause and was verified blocked; the rest are model-level or indistinguishable
+from legitimate use. See [docs/FEEDBACK_LOOP.md](docs/FEEDBACK_LOOP.md).
+
 Next:
 
-1. Generate candidate Rego rules from confirmed findings (human-approved).
-2. Re-run the campaign to verify each rule, and record the result as a `VerificationResult`.
-3. Run that verification as a CI gate against gateway policies.
-4. Expose the gateway as an MCP proxy.
+1. Emit Rego as well as YAML, so approved rules also apply under OPA.
+2. Run the verification as a CI gate against gateway policies.
+3. Expose the gateway as an MCP proxy.
 
 Not every attack family is addressable at the gateway: jailbreaks and
 system-prompt extraction happen inside the model and need model-level

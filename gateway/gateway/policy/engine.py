@@ -23,6 +23,7 @@ decision is always explainable, never a black box.
 from __future__ import annotations
 
 import logging
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -76,6 +77,21 @@ def load_rules(path: Path | str = DEFAULT_RULES_PATH) -> list[Rule]:
     return [Rule(**r) for r in raw.get("rules", [])]
 
 
+def load_active_rules() -> list[Rule]:
+    """Base rules.yaml, plus any rules in the file named by ARAVEX_EXTRA_RULES.
+
+    Extra rules are appended, so they can only add guardrails after the base
+    ones; they cannot override a base rule. Used to activate human-approved
+    rules generated from red-team findings. Applies to the local YAML matcher;
+    an OPA server evaluates its own Rego and does not see this file.
+    """
+    rules = load_rules()
+    extra = os.environ.get("ARAVEX_EXTRA_RULES")
+    if extra:
+        rules += load_rules(extra)
+    return rules
+
+
 class PolicyEngine:
     def __init__(
         self,
@@ -84,7 +100,7 @@ class PolicyEngine:
         anomaly_tracker: anomaly_module.AnomalyTracker = anomaly_module.tracker,
     ):
         self.registry = identity_registry
-        self.rules = rules if rules is not None else load_rules()
+        self.rules = rules if rules is not None else load_active_rules()
         self.anomaly_tracker = anomaly_tracker
 
     def _security_findings(self, request: ActionRequest) -> tuple[list[SecurityFinding], float, float, float]:

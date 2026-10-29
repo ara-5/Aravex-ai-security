@@ -49,11 +49,14 @@ def wait_for(url: str, proc: subprocess.Popen, name: str, timeout: float = 60) -
     raise RuntimeError(f"{name} did not become healthy at {url}")
 
 
-def mint_key() -> str:
-    subprocess.run([sys.executable, "scripts/generate_agent_keys.py"], cwd=ROOT / "gateway",
-                   check=True, capture_output=True)
-    keys = yaml.safe_load((ROOT / "gateway" / ".secrets" / "agent_keys.dev.yaml").read_text())
-    return keys["agents"][AGENT_ID]
+def mint_key(agent_id: str = AGENT_ID, rotate: bool = True) -> str:
+    """Return the dev bearer key for ``agent_id``. ``rotate=False`` reuses existing keys,
+    so a gateway restarted later still accepts keys handed out earlier."""
+    keys_file = ROOT / "gateway" / ".secrets" / "agent_keys.dev.yaml"
+    if rotate or not keys_file.exists() or agent_id not in (yaml.safe_load(keys_file.read_text()) or {}).get("agents", {}):
+        subprocess.run([sys.executable, "scripts/generate_agent_keys.py"], cwd=ROOT / "gateway",
+                       check=True, capture_output=True)
+    return yaml.safe_load(keys_file.read_text())["agents"][agent_id]
 
 
 def run_campaign(mode: str, tmp: Path, gateway_key: str, workers: int) -> dict[str, dict]:

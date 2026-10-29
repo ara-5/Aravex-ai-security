@@ -90,6 +90,23 @@ agents:
       iam:
         access: false
 
+  # Deliberately over-permissive twin of nova-assistant: the "before" state
+  # for the finding -> rule -> verify loop. Every tool, every permission.
+  # Only the shipped base rules stand between this identity and harm.
+  - agent_id: nova-assistant-broad
+    name: Nova Assistant (over-permissioned)
+    description: Misconfigured baseline used to demonstrate rule generation. Do not use in production.
+    owner_human_id: h-jane-owner
+    trust_level: standard
+    allowed_tools: [filesystem_tool, email_tool, customer_db_tool, calendar_mcp_tool, iam_tool, secrets_tool]
+    permissions:
+      filesystem: {read: true, write: true}
+      email: {send: true}
+      customer_db: {read: true, write: true, export: true}
+      calendar: {send: true}
+      iam: {access: true}
+      secrets: {read: true}
+
 tools:
   - tool_id: customer_db_tool
     resource_category: customer_db
