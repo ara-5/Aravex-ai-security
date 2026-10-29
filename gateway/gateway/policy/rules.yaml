@@ -1,0 +1,49 @@
+# Declarative security policy rules, evaluated in order. First match wins
+# and short-circuits the risk-score fallback below it -- these are the hard
+# guardrails that must hold regardless of what any risk model computes.
+#
+# Supported `when` conditions (all given conditions must match):
+#   agent_id            - exact match
+#   action               - exact match, or list of allowed values
+#   resource_matches     - regex against the resource string
+#   record_count_gt      - integer threshold
+#   data_classification  - exact match
+#   destination          - exact match
+#
+# `then` is one of ALLOW / DENY / HUMAN_APPROVAL.
+
+rules:
+  - name: deny_secret_access
+    when:
+      resource_matches: "^secrets\\.|api_key|credential"
+    then: DENY
+    reason: "Agents may never read or export secrets/credentials through the gateway."
+
+  - name: deny_bulk_export
+    when:
+      action: export
+      record_count_gt: 1000
+    then: DENY
+    reason: "Bulk export exceeds the maximum record threshold allowed for automated agents."
+
+  - name: require_approval_prod_delete
+    when:
+      action: delete
+      resource_matches: "database|production"
+    then: HUMAN_APPROVAL
+    reason: "Deleting production data always requires explicit human sign-off."
+
+  - name: block_highly_sensitive_to_external
+    when:
+      data_classification: HIGHLY_SENSITIVE
+      destination: external_api
+    then: DENY
+    reason: "Highly sensitive data may not leave the perimeter through an external API."
+
+  - name: deny_customer_support_db_write
+    when:
+      agent_id: customer-support-agent
+      action: write
+      resource_matches: "^customer_db\\."
+    then: DENY
+    reason: "customer-support-agent is scoped to read-only access on customer_db."

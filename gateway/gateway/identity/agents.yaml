@@ -1,0 +1,78 @@
+# Agent IAM registry: the identity chain is Human -> Agent Identity -> Tool
+# Identity -> Resource. Nothing an agent does is trusted unless it resolves
+# all the way through this chain.
+
+humans:
+  - human_id: h-jane-owner
+    name: Jane Doe
+    email: jane@example.com
+    role: platform_owner
+
+agents:
+  - agent_id: customer-support-agent
+    name: Customer Support Agent
+    description: Answers customer questions, reads profiles, sends emails.
+    owner_human_id: h-jane-owner
+    trust_level: standard
+    allowed_tools: [customer_db_tool, email_tool]
+    permissions:
+      customer_db:
+        read: true
+        write: false
+        export: false
+      email:
+        send: true
+      payments:
+        read: false
+        write: false
+      filesystem:
+        access: false
+      secrets:
+        read: false
+      database:
+        delete: false
+
+  - agent_id: data-ops-agent
+    name: Data Operations Agent
+    description: Performs maintenance and administrative tasks on internal systems.
+    owner_human_id: h-jane-owner
+    trust_level: elevated
+    allowed_tools: [customer_db_tool, filesystem_tool, database_admin_tool]
+    permissions:
+      customer_db:
+        read: true
+        write: true
+        export: false
+      filesystem:
+        access: true
+      database:
+        delete: true
+      secrets:
+        read: false
+
+  - agent_id: billing-agent
+    name: Billing Agent
+    description: Reads payment records to answer billing questions. No write access.
+    owner_human_id: h-jane-owner
+    trust_level: standard
+    allowed_tools: [payments_tool]
+    permissions:
+      payments:
+        read: true
+        write: false
+      secrets:
+        read: false
+
+tools:
+  - tool_id: customer_db_tool
+    resource_category: customer_db
+  - tool_id: email_tool
+    resource_category: email
+  - tool_id: payments_tool
+    resource_category: payments
+  - tool_id: filesystem_tool
+    resource_category: filesystem
+  - tool_id: database_admin_tool
+    resource_category: database
+  - tool_id: secrets_tool
+    resource_category: secrets
