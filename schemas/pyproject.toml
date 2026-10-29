@@ -1,0 +1,13 @@
+[project]
+name = "aravex-schemas"
+version = "0.1.0"
+description = "Shared data contracts for Aravex: AgentAction, Decision, Finding, PolicyProposal, Verification."
+requires-python = ">=3.11"
+dependencies = ["pydantic>=2.8,<3.0"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["aravex_schemas"]

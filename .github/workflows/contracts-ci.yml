@@ -1,0 +1,20 @@
+name: Contracts CI
+
+on:
+  push:
+    branches: [main]
+    paths: ['schemas/**', 'tests/**', 'gateway/gateway/models.py', 'redteam/redteam_engine/attacks/**', '.github/**']
+  pull_request:
+    paths: ['schemas/**', 'tests/**', 'gateway/gateway/models.py', 'redteam/redteam_engine/attacks/**', '.github/**']
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install "pydantic>=2.8,<3.0" "pytest>=8,<9"
+      - name: Contract tests (schemas + compatibility with gateway and red-team)
+        run: pytest -q

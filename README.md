@@ -19,13 +19,15 @@ the defense holds.
 |---|---|---|
 | [`redteam/`](redteam/) | AgentShield | Agentic red-team engine, 11 attack families, scorecard, dashboard, CI regression gate, plus the deliberately vulnerable `target_agent` |
 | [`gateway/`](gateway/) | AegisAI | Zero-trust gateway: agent IAM, OPA/Rego policy engine, risk scoring, human approval, audit, observability |
+| [`schemas/`](schemas/) | new | Shared contracts (`AgentAction`, `PolicyDecision`, `Finding`, `PolicyProposal`, `VerificationResult`) that let the two halves exchange data |
+| [`tests/`](tests/) | new | Contract tests proving the shared schemas accept what both projects already produce |
 
 Both projects were imported with full git history and still run as before;
 see the README in each directory for setup.
 
 ## Status
 
-Early integration. Today the two halves run side by side. Planned:
+Early integration. The two halves run side by side and share a tested set of contracts (`schemas/`). Planned:
 
 1. Route `target_agent` tool calls through the gateway (protected / unprotected toggle).
 2. Report attack success with and without the gateway, per attack category.
