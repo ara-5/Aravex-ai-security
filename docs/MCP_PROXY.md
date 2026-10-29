@@ -14,16 +14,17 @@ only if the gateway answers `ALLOW`.
 ## Run it
 
 ```bash
-pip install -r mcp_proxy/requirements.txt -r gateway/requirements.txt
-ARAVEX_API_KEY=... python -m aravex_mcp \
+pip install ./mcp_proxy          # installs the `aravex-mcp` command
+ARAVEX_API_KEY=... aravex-mcp \
     --gateway-url http://localhost:8000 --agent-id nova-assistant \
     --mapping mcp_proxy/mapping.example.yaml \
     -- <upstream server command and args>
 ```
 
-Run it from `mcp_proxy/` (or put that folder on `PYTHONPATH`). In an MCP client's
-config, the proxy replaces the upstream server's entry, and the real command moves
-after `--`.
+The package is marked "Private :: Do Not Upload", so `twine upload` refuses it. In an
+MCP client's config, the proxy replaces the upstream server's entry, and the real
+command moves after `--`. From a source checkout without installing, run
+`python -m aravex_mcp ...` from inside `mcp_proxy/`.
 
 | Flag / variable | Meaning |
 |---|---|

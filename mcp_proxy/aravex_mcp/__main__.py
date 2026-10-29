@@ -28,9 +28,7 @@ log = logging.getLogger("aravex_mcp")
 
 
 def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
-    if "--" not in argv:
-        raise SystemExit("aravex-mcp: give the upstream server command after '--'")
-    split = argv.index("--")
+    split = argv.index("--") if "--" in argv else len(argv)
     p = argparse.ArgumentParser(prog="aravex-mcp", description=__doc__.split("\n\n")[0])
     p.add_argument("--gateway-url", default=os.environ.get("ARAVEX_GATEWAY_URL", "http://localhost:8000"))
     p.add_argument("--agent-id", required=True, help="gateway agent identity this proxy acts as")
@@ -43,7 +41,9 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
     p.add_argument("--upstream-env", action="append", default=[], metavar="NAME",
                    help="forward this environment variable to the upstream server (repeatable)")
     p.add_argument("-v", "--verbose", action="store_true")
-    args = p.parse_args(argv[:split])
+    args = p.parse_args(argv[:split])  # --help and missing flags are reported before anything else
+    if split == len(argv):
+        raise SystemExit("aravex-mcp: give the upstream server command after '--'")
     command = argv[split + 1:]
     if not command:
         raise SystemExit("aravex-mcp: empty upstream command after '--'")

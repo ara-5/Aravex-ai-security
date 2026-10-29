@@ -5,3 +5,8 @@ venv*/
 .pytest_cache/
 .env
 .aravex-loop/
+
+# packaging
+build/
+dist/
+*.egg-info/
