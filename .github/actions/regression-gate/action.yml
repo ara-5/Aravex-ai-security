@@ -5,7 +5,7 @@ description: >
   reproduce -- turns "we fixed it" into a durable, CI-enforced guarantee.
   Packaged as a composite action so it can be dropped into any repo that
   vendors (or depends on) AgentShield's redteam_engine, referenced as
-  `uses: ./.github/actions/regression-gate` here, or published standalone
+  `uses: ./.github/actions/regression-gate` with `working-directory: redteam`, or published standalone
   (`agentshield/regression-gate@v1`) for other repos to consume directly.
 
 inputs:

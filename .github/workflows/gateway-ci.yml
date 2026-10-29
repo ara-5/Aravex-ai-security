@@ -1,9 +1,15 @@
-name: CI
+name: Gateway CI
 
 on:
   push:
     branches: [main]
+    paths: ['gateway/**', '.github/**']
   pull_request:
+    paths: ['gateway/**', '.github/**']
+
+defaults:
+  run:
+    working-directory: gateway
 
 jobs:
   test:
@@ -45,6 +51,7 @@ jobs:
         with:
           python-version: "3.11"
           cache: "pip"
+          cache-dependency-path: gateway/requirements.txt
 
       - name: Install dependencies
         run: pip install -r requirements.txt
@@ -53,12 +60,12 @@ jobs:
         run: python -c "import json; json.load(open('grafana/dashboards/aegisai-overview.json')); print('valid')"
 
       - name: Validate Rego policy (opa test)
-        run: docker run --rm -v "${{ github.workspace }}/gateway/policy/rego:/policy" openpolicyagent/opa test /policy -v
+        run: docker run --rm -v "${{ github.workspace }}/gateway/gateway/policy/rego:/policy" openpolicyagent/opa test /policy -v
 
       - name: Start OPA server
         run: |
           docker run -d --name opa -p 8181:8181 \
-            -v "${{ github.workspace }}/gateway/policy/rego:/policy" \
+            -v "${{ github.workspace }}/gateway/gateway/policy/rego:/policy" \
             openpolicyagent/opa run --server --addr 0.0.0.0:8181 /policy
           for i in $(seq 1 15); do
             curl -sf http://localhost:8181/health && break
