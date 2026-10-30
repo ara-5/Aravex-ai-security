@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import httpx
 
-from redteam_engine.config import TARGET_ADMIN_API_KEY, TARGET_AGENT_URL
+from redteam_engine.config import TARGET_ADMIN_API_KEY, TARGET_AGENT_URL, TARGET_TIMEOUT
 
 
 class TargetClient:
@@ -21,7 +21,7 @@ class TargetClient:
         no real network/socket involved."""
         self.base_url = base_url
         headers = {"X-API-Key": TARGET_ADMIN_API_KEY} if TARGET_ADMIN_API_KEY else {}
-        self._client = client or httpx.Client(base_url=base_url, headers=headers, timeout=30.0)
+        self._client = client or httpx.Client(base_url=base_url, headers=headers, timeout=TARGET_TIMEOUT)
 
     def chat(self, session_id: str, message: str) -> dict:
         r = self._client.post("/chat", json={"session_id": session_id, "message": message})

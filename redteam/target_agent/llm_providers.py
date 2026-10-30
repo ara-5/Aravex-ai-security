@@ -99,7 +99,8 @@ class LLMProvider(abc.ABC):
 class OllamaLLMProvider(LLMProvider):
     name = "ollama"
 
-    def __init__(self, host: str = config.OLLAMA_HOST, model: str = config.OLLAMA_MODEL, timeout: float = 20.0):
+    def __init__(self, host: str = config.OLLAMA_HOST, model: str = config.OLLAMA_MODEL,
+                 timeout: float = config.OLLAMA_TIMEOUT):
         self.host = host
         self.model = model
         self.timeout = timeout

@@ -59,7 +59,8 @@ def mint_key(agent_id: str = AGENT_ID, rotate: bool = True) -> str:
     return yaml.safe_load(keys_file.read_text())["agents"][agent_id]
 
 
-def run_campaign(mode: str, tmp: Path, gateway_key: str, workers: int) -> dict[str, dict]:
+def run_campaign(mode: str, tmp: Path, gateway_key: str, workers: int) -> tuple[dict[str, dict], dict]:
+    """Returns (per-category results, run facts). Raises if the run cannot be trusted."""
     env = {**os.environ,
            "TARGET_PORT": str(TARGET_PORT),
            "TARGET_DATABASE_URL": f"sqlite:///{(tmp / f'target_{mode}.db').as_posix()}",
@@ -75,6 +76,7 @@ def run_campaign(mode: str, tmp: Path, gateway_key: str, workers: int) -> dict[s
         subprocess.run([sys.executable, "-m", "redteam_engine.cli", "campaign", "run",
                         "--name", f"compare-{mode}", "--workers", str(workers)],
                        cwd=ROOT / "redteam", env=env, check=True, capture_output=True)
+        llm = httpx.get(f"http://127.0.0.1:{TARGET_PORT}/admin/state", timeout=10).json()["llm"]
     finally:
         target.terminate()
         target.wait(timeout=15)
@@ -83,12 +85,25 @@ def run_campaign(mode: str, tmp: Path, gateway_key: str, workers: int) -> dict[s
     try:
         attempted = dict(con.execute("SELECT category, COUNT(DISTINCT technique) FROM attack_attempts GROUP BY category"))
         succeeded = dict(con.execute("SELECT category, COUNT(DISTINCT technique) FROM findings GROUP BY category"))
+        errored = con.execute(
+            "SELECT COUNT(*) FROM attack_attempts WHERE response_text LIKE '[error contacting target%'").fetchone()[0]
     finally:
         con.close()
-    return {c: {"attempted": attempted[c], "succeeded": succeeded.get(c, 0)} for c in attempted}
+
+    # An attempt that timed out is recorded as "no success". A model that quietly fell back
+    # to the stand-in is not the model we claim to have tested. Either makes the table a lie.
+    problems = []
+    if errored:
+        problems.append(f"{errored} attempt(s) failed to get a reply from the target (raise TARGET_TIMEOUT)")
+    if llm["provider"] != "naive" and llm["fallbacks"]:
+        problems.append(f"{llm['fallbacks']} of {llm['calls']} model calls fell back to the stand-in (raise OLLAMA_TIMEOUT)")
+    if problems:
+        raise RuntimeError(f"the '{mode}' campaign is not valid: " + "; ".join(problems))
+    facts = {"provider": llm["provider"], "calls": llm["calls"], "attempts": sum(attempted.values())}
+    return {c: {"attempted": attempted[c], "succeeded": succeeded.get(c, 0)} for c in attempted}, facts
 
 
-def render(bare: dict, guarded: dict) -> str:
+def render(bare: dict, guarded: dict, facts: dict) -> str:
     lines = ["# Aravex: attack success with and without the gateway", "",
              "| Category | Gateway can address | Techniques tried | Succeeded (bare) | Succeeded (gateway) | Mitigated |",
              "|---|---|---:|---:|---:|---:|"]
@@ -101,6 +116,8 @@ def render(bare: dict, guarded: dict) -> str:
         lines.append(f"| {cat} | {layer.value if layer else 'unclassified'} | {n} | {b} | {g} | {max(b - g, 0)} |")
         tot_b, tot_g = tot_b + b, tot_g + g
     lines += ["", f"**Total:** {tot_b} successful attacks bare, {tot_g} behind the gateway.", "",
+              f"Target model: `{facts['provider']}` ({facts['calls']} model calls in the gateway run, none fell back "
+              "to the stand-in; no attempt timed out).", "",
               "Counts are distinct techniques whose attack succeeded. The gateway's rate-based anomaly "
               "detector is disabled for this run so the numbers reflect policy, not request volume.", "",
               "'Gateway can address' is a design classification (see `schemas/aravex_schemas/coverage.py`), "
@@ -127,14 +144,14 @@ def main() -> int:
         with tempfile.TemporaryDirectory() as t:
             tmp = Path(t)
             print("Campaign 1/2: target without gateway...", flush=True)
-            bare = run_campaign("off", tmp, key, args.workers)
+            bare, _ = run_campaign("off", tmp, key, args.workers)
             print("Campaign 2/2: target behind gateway...", flush=True)
-            guarded = run_campaign("enforce", tmp, key, args.workers)
+            guarded, facts = run_campaign("enforce", tmp, key, args.workers)
     finally:
         gateway.terminate()
         gateway.wait(timeout=15)
 
-    report = render(bare, guarded)
+    report = render(bare, guarded, facts)
     print(report)
     if args.out:
         Path(args.out).write_text(report, encoding="utf-8")

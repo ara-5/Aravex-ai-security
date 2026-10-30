@@ -14,6 +14,9 @@ TARGET_AGENT_URL = os.getenv("TARGET_AGENT_URL", "http://localhost:8001")
 # Sent as X-API-Key on every request to the target agent -- only matters
 # if that target has ADMIN_API_KEY set (target_agent/config.py).
 TARGET_ADMIN_API_KEY = os.getenv("TARGET_ADMIN_API_KEY", "")
+# Seconds to wait for one target reply. Raise it with a slow real model, or attacks
+# time out and are recorded as failures.
+TARGET_TIMEOUT = float(os.getenv("TARGET_TIMEOUT", "30"))
 
 # Gates this service's own write endpoints (/campaigns/run,
 # /findings/{id}/regression, /regression/run-all). Empty (default) = open,

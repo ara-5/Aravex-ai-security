@@ -27,13 +27,14 @@ approves them, and the attacks are replayed to prove the rules hold.
 
 ## What is measured so far
 
-All results are from the deterministic offline stand-in model that the target
-agent ships with, not a real LLM, and each is a single run. Treat them as a
-demonstration that the mechanism works, not as an effectiveness claim.
+Each result is a single run. Most use the deterministic offline stand-in model the
+target agent ships with, not a real LLM, and one uses a small local model. Treat them
+as a demonstration that the mechanism works, not as an effectiveness claim.
 
 | Experiment | Result |
 |---|---|
 | Same 11-category campaign, bare vs. behind the gateway (least-privilege identity) | **19 successful attacks → 6.** Every gateway-addressable category went to zero; the 6 left are model-level or partly visible ones. [Details](docs/DEFENSE_COMPARISON.md) |
+| Same campaign, seed attacks only, against a real small model (`llama3.2:3b`, one run) | 5 bare → 3 behind the gateway, **but not a gateway result**: no gateway-addressable category succeeded even without it, and the drop is in a model-level category. See [the evidence log](docs/EVIDENCE.md). |
 | Feedback loop on an over-permissioned identity | 10 open findings → 1 draft rule → approved → **1 finding verified blocked**, 5 of 5 benign actions still allowed. The other 9 are model-level, have no tool call to act on, or look identical to legitimate use. [Details](docs/FEEDBACK_LOOP.md) |
 
 The gateway cannot stop everything. Jailbreaks and system-prompt extraction

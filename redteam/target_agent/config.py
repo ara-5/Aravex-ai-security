@@ -22,6 +22,9 @@ PORT = int(os.getenv("TARGET_PORT", "8001"))
 
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
+# Seconds to wait for one Ollama reply before falling back to the stand-in. A small
+# model on a slow CPU can need far more than the default.
+OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", "20"))
 # Off by default: local CPU inference can take 10s+ per call, which turns
 # a multi-technique, multi-mutation campaign into a multi-minute wait.
 # Flip to true (and set OLLAMA_MODEL to a model you've pulled) to red-team

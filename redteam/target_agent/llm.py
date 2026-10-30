@@ -11,6 +11,8 @@ misconfigured or unreachable model backend.
 """
 from __future__ import annotations
 
+import threading
+
 from target_agent.config import SYSTEM_PROMPT
 from target_agent.llm_providers import (
     ContextBlock,
@@ -20,6 +22,17 @@ from target_agent.llm_providers import (
 )
 
 _fallback = NaiveLLMProvider()
+
+# How often the configured provider actually answered. A "real model" run whose
+# calls quietly fell back to the stand-in is not a real-model result, so this is
+# exposed on /admin/state and checked by scripts/compare_defense.py.
+_stats_lock = threading.Lock()
+_stats = {"calls": 0, "fallbacks": 0}
+
+
+def stats() -> dict:
+    with _stats_lock:
+        return {"provider": get_provider().name, **_stats}
 
 
 def call_llm(
@@ -31,6 +44,10 @@ def call_llm(
 ) -> LLMResponse:
     provider = get_provider()
     result = provider.generate(system_prompt, context_blocks, history, user_message, tool_specs)
+    with _stats_lock:
+        _stats["calls"] += 1
+        if result is None and provider.name != _fallback.name:
+            _stats["fallbacks"] += 1
     if result is not None:
         return result
     if provider.name == _fallback.name:
