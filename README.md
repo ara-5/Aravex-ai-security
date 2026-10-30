@@ -55,7 +55,7 @@ was actually measured.
 | [`policies/`](policies/) | Approved, verified gateway rules, who approved them, and the findings they must keep blocked. |
 | [`scripts/`](scripts/) | `compare_defense.py` (bare vs. protected) and `run_loop.py` (propose / verify / demo / promote). |
 | [`tests/`](tests/) | Contract tests, loop tests, and the verification gate (`tests/gate`). |
-| [`docs/`](docs/) | [Defense comparison](docs/DEFENSE_COMPARISON.md), [feedback loop](docs/FEEDBACK_LOOP.md), [MCP proxy](docs/MCP_PROXY.md). |
+| [`docs/`](docs/) | [Defense comparison](docs/DEFENSE_COMPARISON.md), [feedback loop](docs/FEEDBACK_LOOP.md), [MCP proxy](docs/MCP_PROXY.md), [evidence log](docs/EVIDENCE.md), [decisions](docs/DECISIONS.md), [roadmap](docs/ROADMAP.md). Also [CHANGELOG](CHANGELOG.md), [CONTRIBUTING](CONTRIBUTING.md), [SECURITY](SECURITY.md). |
 
 `redteam/` and `gateway/` were imported with their full git history and each
 keeps its own README with setup details.
