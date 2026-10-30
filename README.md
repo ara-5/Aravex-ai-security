@@ -77,6 +77,7 @@ pytest tests/schemas tests/integration tests/loop   # contracts + loop (repo roo
 pytest tests/gate               # verification gate; the OPA backend needs OPA_URL (CI sets REQUIRE_OPA=1)
 pytest tests/mcp_proxy          # MCP proxy against the real gateway engine
 python scripts/demo_mcp_proxy.py   # same checks with real processes (uses port 8010)
+python scripts/demo_scan_and_pin.py   # scan, pin, and refuse a rug pull (port 8010)
 (cd redteam && pytest tests)    # red-team engine and target agent
 (cd gateway && python scripts/generate_agent_keys.py && pytest)   # OPA/Redis/Postgres tests skip if absent
 ```
@@ -105,9 +106,15 @@ server. Tool calls reach the server only if the gateway allows them; anything el
 including a gateway that cannot be reached, is refused. [Setup and mapping](docs/MCP_PROXY.md):
 
 ```bash
-ARAVEX_API_KEY=... python -m aravex_mcp --gateway-url http://localhost:8000 \
-    --agent-id nova-assistant --mapping mcp_proxy/mapping.example.yaml -- <upstream command>
+pip install ./mcp_proxy
+aravex-mcp scan -- <upstream command>        # inventory, poisoning findings, suggested mapping, pins
+ARAVEX_API_KEY=... aravex-mcp --gateway-url http://localhost:8000 --agent-id nova-assistant \
+    --mapping aravex-scan/mapping.suggested.yaml --pins aravex-scan/pins.json -- <upstream command>
 ```
+
+`scan` reads a server's tool definitions and flags the known tool-poisoning patterns
+(hidden instructions, invisible characters, key-file grabs). `--pins` then refuses any
+tool whose description changes after you reviewed it.
 
 ## How the pieces connect
 
@@ -143,8 +150,9 @@ Not done yet:
 - The benign-action set is a small hand-written list; a rule is only as safe as
   that list is complete.
 - Measurements use the offline stand-in model. Real-model results are untested.
-- The MCP proxy gates tool calls only (not tool descriptions or results), handles
-  stdio only, and has not been run against a real third-party server yet. See its
+- The MCP proxy gates tool calls and, with pins, tool definitions, but not tool results;
+  its scanner is heuristic; it handles stdio only; and it has not been run against a real
+  third-party server yet. See its
   [limits](docs/MCP_PROXY.md#limits).
 - Human approvals need approver keys (`GATEWAY_APPROVER_KEYS="name:key,..."`, separate
   from agent keys; none configured means the approval endpoints are disabled). The

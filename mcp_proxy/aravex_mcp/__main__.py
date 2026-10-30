@@ -12,9 +12,11 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
 import os
 import sys
+from pathlib import Path
 
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
@@ -40,6 +42,7 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
     p.add_argument("--timeout", type=float, default=10.0, help="gateway request timeout in seconds")
     p.add_argument("--upstream-env", action="append", default=[], metavar="NAME",
                    help="forward this environment variable to the upstream server (repeatable)")
+    p.add_argument("--pins", help="pins.json from `aravex-mcp scan`; tools not pinned, or changed since, are hidden and refused")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv[:split])  # --help and missing flags are reported before anything else
     if split == len(argv):
@@ -50,20 +53,25 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
     return args, command
 
 
-async def serve(args: argparse.Namespace, command: list[str], mapping: Mapping, gate: Gate) -> None:
+async def serve(args: argparse.Namespace, command: list[str], mapping: Mapping, gate: Gate,
+                pins: dict[str, str] | None = None) -> None:
     env = {n: os.environ[n] for n in args.upstream_env if n in os.environ}
     params = StdioServerParameters(command=command[0], args=command[1:], env=env)
     async with stdio_client(params) as (up_read, up_write):
         async with ClientSession(up_read, up_write) as upstream:
             await upstream.initialize()
-            server = build_server(upstream, gate, mapping, agent_id=args.agent_id, human_id=args.human_id)
+            server = build_server(upstream, gate, mapping, agent_id=args.agent_id, human_id=args.human_id, pins=pins)
             async with stdio_server() as (read, write):
                 await server.run(read, write, server.create_initialization_options())
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if argv and argv[0] == "scan":
+        from aravex_mcp.scan import scan_main
+        return scan_main(argv[1:])
     logging.basicConfig(stream=sys.stderr, format="aravex-mcp %(levelname)s %(message)s")
-    args, command = parse_args(sys.argv[1:] if argv is None else argv)
+    args, command = parse_args(argv)
     log.setLevel(logging.DEBUG if args.verbose else logging.INFO)
 
     api_key = os.environ.get("ARAVEX_API_KEY", "")
@@ -76,13 +84,24 @@ def main(argv: list[str] | None = None) -> int:
         print(f"aravex-mcp: {exc}", file=sys.stderr)
         return 2
 
+    pins = None
+    if args.pins:
+        try:
+            pins = json.loads(Path(args.pins).read_text(encoding="utf-8"))["tools"]
+            if not isinstance(pins, dict):
+                raise TypeError("'tools' must be an object")
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            print(f"aravex-mcp: cannot read pins {args.pins}: {exc}", file=sys.stderr)
+            return 2
+
     gate = Gate.for_url(args.gateway_url, api_key, timeout=args.timeout, approval_wait=args.approval_wait)
     if not gate.healthy():
         log.warning("gateway at %s is not answering; every tool call will be refused until it is", args.gateway_url)
-    log.info("gating %s for agent %s through %s (%d tools mapped)",
-             mapping.server, args.agent_id, args.gateway_url, len(mapping.tools))
+    log.info("gating %s for agent %s through %s (%d tools mapped%s)",
+             mapping.server, args.agent_id, args.gateway_url, len(mapping.tools),
+             f", {len(pins)} pinned" if pins is not None else ", definitions not pinned")
     try:
-        asyncio.run(serve(args, command, mapping, gate))
+        asyncio.run(serve(args, command, mapping, gate, pins))
     except KeyboardInterrupt:
         pass
     return 0

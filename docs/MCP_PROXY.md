@@ -33,10 +33,45 @@ command moves after `--`. From a source checkout without installing, run
 | `--mapping` | YAML mapping of upstream tools to gateway actions (below). |
 | `--human-id` | Accountable human on the identity chain (default `h-jane-owner`). |
 | `--approval-wait SECONDS` | Wait this long for a person to resolve `HUMAN_APPROVAL`. Default `0`: refuse at once. |
+| `--pins FILE` | `pins.json` from `aravex-mcp scan`. Tools that were not pinned, or whose definition changed since, are hidden and refused. |
 | `--upstream-env NAME` | Forward this environment variable to the upstream server. Repeatable. |
 
 The upstream server gets only a small default environment plus the variables you
 forward by name. It does **not** inherit `ARAVEX_API_KEY`.
+
+## Scan a server before you trust it
+
+```bash
+aravex-mcp scan --out-dir aravex-scan -- <server command and args>
+```
+
+Connects to the server, reads its tool list, and writes three files. No model, no network:
+
+| File | What it is |
+|---|---|
+| `report.md` | Each tool with what it appears to do (read/write/send/delete on files, email, secrets...), a risk rating, and findings. |
+| `mapping.suggested.yaml` | A starting point for the mapping below, guessed from tool names and parameters. Review every entry. Tools it cannot classify, and tools with a high-severity finding, are left out, so the proxy refuses them until a person decides. |
+| `pins.json` | A fingerprint (hash of name, description and input schema) of every tool. |
+
+It looks for the patterns used in tool-poisoning attacks: hidden `<IMPORTANT>`-style
+instruction blocks, "don't tell the user", "ignore previous instructions", invisible
+characters, credential or key-file references combined with an instruction to move data,
+descriptions that steer the model to another tool, outbound-URL instructions, and
+parameters that invite the agent to pass file or conversation contents. A description
+flagged as hostile is not allowed to decide what the tool is classified as.
+`--fail-on high` makes the command exit 1 on a finding, so it can gate CI. Ordinary tool
+descriptions (file, email, calendar, SQL) produce no findings in the tests.
+
+**Pinning.** Run the proxy with `--pins pins.json` and a server cannot swap in a poisoned
+description after you reviewed it (a "rug pull"). The proxy checks the server's *current*
+definition on every call and hides and refuses any tool that is new or changed.
+`scripts/demo_scan_and_pin.py` runs this with real processes: a server passes the scan,
+then alters a description; without pins the poisoned text reaches the agent, with pins the
+tool disappears and the call is refused.
+
+This is a static, heuristic check. It will miss poison it has no pattern for and may flag
+innocent text. A clean scan is not proof a server is safe, and a finding is a reason to
+read the description, not proof of an attack.
 
 ## The mapping
 
@@ -95,10 +130,11 @@ last address). Each was caught.
 
 ## Limits
 
-- **Only calls are gated.** The proxy sees `tools/call` requests. It does not read
-  tool *descriptions* (a malicious server can plant instructions in them), and it does
-  not inspect tool *results* (prompt injection or leaked data coming back). Those need
-  separate checks.
+- **Calls and definitions are gated, results are not.** The proxy gates `tools/call`
+  requests, and with `--pins` it refuses tools whose definition changed. It does not
+  inspect tool *results* (prompt injection or leaked data coming back). The first scan
+  of a server also relies on heuristics, so a description poisoned in a way no pattern
+  covers will be pinned as-is.
 - **The mapping is trusted.** If a destructive tool is mapped as `read`, the gateway
   will judge it as a read. The proxy cannot verify what a tool really does.
 - **Tools only.** Only `tools/list` and `tools/call` are served. Resources, prompts and

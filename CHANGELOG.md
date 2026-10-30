@@ -5,6 +5,18 @@ Newest first. Each entry says what changed and what was checked. See
 
 ## Unreleased
 
+- **`aravex-mcp scan`**: reads a stdio MCP server's tool definitions and writes a report,
+  a suggested mapping and `pins.json`. Flags known tool-poisoning patterns (hidden
+  instruction blocks, invisible characters, key-file grabs with exfiltration wording,
+  tool steering, outbound-URL instructions, side-channel parameters) and does not let a
+  flagged description decide how its tool is classified. `--fail-on` for CI.
+- **Definition pinning**: `aravex-mcp --pins pins.json` hides and refuses any tool that
+  is new or whose name, description or schema changed since the scan, checked against the
+  server's current definition on every call. Demonstrated with real processes
+  (`scripts/demo_scan_and_pin.py`): a rug pull goes unnoticed without pins and is stopped
+  with them. The tests were checked by breaking the scanner and the pin check seven ways.
+  The scanner is heuristic and has only been tried on servers written in this repo.
+
 ## 0.1.0 (2026-10-30)
 
 First tagged state of the merged platform.

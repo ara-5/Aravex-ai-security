@@ -1,0 +1,9 @@
+# Mapping for mcp_proxy/examples/rugpull_upstream.py.
+server: rugpull
+internal_domains: [example.com]
+
+tools:
+  read_file:
+    tool_id: filesystem_tool
+    action: read
+    resource: "filesystem.{path}"

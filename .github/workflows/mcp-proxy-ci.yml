@@ -35,6 +35,9 @@ jobs:
       - name: End to end with real processes
         run: python scripts/demo_mcp_proxy.py
 
+      - name: Scan, pin and refuse a rug pull (real processes)
+        run: python scripts/demo_scan_and_pin.py
+
       - name: The package installs and its command runs
         run: |
           pip install ./mcp_proxy
