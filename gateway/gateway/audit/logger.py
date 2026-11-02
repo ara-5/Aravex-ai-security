@@ -15,7 +15,7 @@ from pathlib import Path
 
 import structlog
 
-from gateway.audit import postgres_store
+from gateway.audit import chain, postgres_store
 from gateway.models import ActionRequest, PolicyDecision
 
 LOG_DIR = Path(__file__).resolve().parent.parent.parent / "logs"
@@ -91,6 +91,10 @@ def log_decision(request: ActionRequest, decision: PolicyDecision) -> None:
         reasons=decision.reasons,
     )
     postgres_store.write_decision(request, decision)
+    chain.record(
+        "decision", request_id=decision.request_id, human_id=request.human_id, agent_id=request.agent_id,
+        tool_id=request.tool_id, action=request.action, resource=request.resource,
+        decision=decision.decision.value, matched_rules=decision.matched_rules, reasons=decision.reasons)
 
 
 def log_approval_resolution(approval_id: str, approver: str, approved: bool, decision: PolicyDecision) -> None:
@@ -105,6 +109,8 @@ def log_approval_resolution(approval_id: str, approver: str, approved: bool, dec
         action=decision.action,
         resource=decision.resource,
     )
+    chain.record("approval_resolved", approval_id=approval_id, approver=approver, approved=approved,
+                 request_id=decision.request_id, agent_id=decision.agent_id)
 
 
 def log_auth_failure(claimed_agent_id: str, reason: str) -> None:

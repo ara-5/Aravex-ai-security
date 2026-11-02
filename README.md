@@ -55,7 +55,7 @@ was actually measured.
 | [`policies/`](policies/) | Approved, verified gateway rules, who approved them, and the findings they must keep blocked. |
 | [`scripts/`](scripts/) | `compare_defense.py` (bare vs. protected) and `run_loop.py` (propose / verify / demo / promote). |
 | [`tests/`](tests/) | Contract tests, loop tests, and the verification gate (`tests/gate`). |
-| [`docs/`](docs/) | [Defense comparison](docs/DEFENSE_COMPARISON.md), [feedback loop](docs/FEEDBACK_LOOP.md), [MCP proxy](docs/MCP_PROXY.md), [evidence log](docs/EVIDENCE.md), [decisions](docs/DECISIONS.md), [roadmap](docs/ROADMAP.md). Also [CHANGELOG](CHANGELOG.md), [CONTRIBUTING](CONTRIBUTING.md), [SECURITY](SECURITY.md). |
+| [`docs/`](docs/) | [Defense comparison](docs/DEFENSE_COMPARISON.md), [feedback loop](docs/FEEDBACK_LOOP.md), [MCP proxy](docs/MCP_PROXY.md), [delegation and audit](docs/DELEGATION_AND_AUDIT.md), [evidence log](docs/EVIDENCE.md), [decisions](docs/DECISIONS.md), [roadmap](docs/ROADMAP.md). Also [CHANGELOG](CHANGELOG.md), [CONTRIBUTING](CONTRIBUTING.md), [SECURITY](SECURITY.md). |
 
 `redteam/` and `gateway/` were imported with their full git history and each
 keeps its own README with setup details.
@@ -137,6 +137,17 @@ withholds tool output that carries injected instructions or secrets.
 - **Success is ground truth.** The red-team judges read the target's actual
   state (outbox, MCP exfiltration log, granted scopes, executed tool calls), not
   the reply text.
+
+## For systems where agents hand work to agents
+
+- **Capabilities.** A token that says what its holder may do. The holder can pass a *narrower*
+  copy to a sub-agent, and nobody can widen it, strip a restriction or forge one. It is checked on
+  top of policy, so it can never grant what policy denies.
+- **Tamper-evident audit.** Every decision and approval can go into a hash chain, optionally keyed,
+  so edits and deletions in the middle of the log are detectable.
+
+Both have real limits (no revocation; truncation needs an external anchor), set out in
+[docs/DELEGATION_AND_AUDIT.md](docs/DELEGATION_AND_AUDIT.md).
 
 ## Status and known limits
 

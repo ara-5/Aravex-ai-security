@@ -52,3 +52,16 @@ licensed for use. Whether to open-source the scanner is an open question
 
 **The proxy package is marked "Private :: Do Not Upload".** *Why:* it is proprietary and
 should not reach PyPI by accident.
+
+**A capability can only restrict, never grant.** It is checked on top of the normal policy. *Why:*
+a token that could allow things would turn a stolen or over-delegated token into a policy bypass,
+and the policy is where the human-reviewed rules live. *Cost:* a capability cannot be used to
+give an agent extra rights; that still means changing its identity or the policy.
+
+**Capability restrictions use prefixes, not regexes.** *Why:* the party adding a restriction is
+an untrusted agent, and a pathological regex would let it stall the gateway. *Cost:* less
+expressive matching.
+
+**The tamper-evident audit trail is opt-in and fails the request if it cannot write.** *Why:*
+evidence-grade audit that silently drops entries is worse than an outage. *Cost:* a full disk
+now stops the gateway answering when the chain is on.

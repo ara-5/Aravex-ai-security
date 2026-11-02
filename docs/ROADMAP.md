@@ -27,6 +27,10 @@ has been validated with customers yet.
 
 ## Then
 
+- Revocation for capabilities, and tokens bound to a key instead of plain bearer tokens.
+- Sign the verification gate's result (which attacks were replayed, which commit, which model) so
+  "this fix held" is evidence someone else can check, not just a green CI run.
+
 - Enterprise basics: sign-on for approvers, key rotation, persistent storage, audit export,
   container and deployment packaging.
 - Map findings to OWASP's LLM/agentic lists and MITRE ATLAS for compliance-style reports.

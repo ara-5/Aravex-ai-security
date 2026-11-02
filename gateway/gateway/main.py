@@ -20,6 +20,7 @@ from fastapi.responses import Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel
 
+from gateway import capabilities
 from gateway.approvals.manager import ApprovalStatus, manager as approval_manager
 from gateway.audit.logger import log_approval_resolution, log_auth_failure, log_decision
 from gateway.identity.credentials import store as credential_store
@@ -93,8 +94,25 @@ def list_agents() -> list[dict]:
     return [a.model_dump() for a in registry.agents.values()]
 
 
+def _capability_denial(request: ActionRequest, token: str | None) -> str | None:
+    """Why a presented (or required) capability does not allow this request, or None.
+
+    A capability only ever adds restrictions on top of the normal policy. Never presenting
+    one is fine unless GATEWAY_REQUIRE_CAPABILITY=1, so existing callers are unaffected."""
+    if token is None:
+        if os.environ.get("GATEWAY_REQUIRE_CAPABILITY") == "1":
+            return "a capability is required but none was presented"
+        return None
+    key = os.environ.get("GATEWAY_CAPABILITY_ROOT_KEY", "").encode("utf-8")
+    verdict = capabilities.verify(key, token, {
+        "agent_id": request.agent_id, "tool_id": request.tool_id, "action": request.action,
+        "resource": request.resource, "record_count": request.record_count, "destination": request.destination})
+    return None if verdict.ok else f"capability refused: {verdict.reason}"
+
+
 @app.post("/v1/agent-action", response_model=PolicyDecision)
-def agent_action(request: Annotated[ActionRequest, Depends(authenticate_agent)]) -> PolicyDecision:
+def agent_action(request: Annotated[ActionRequest, Depends(authenticate_agent)],
+                 x_aravex_capability: Annotated[str | None, Header()] = None) -> PolicyDecision:
     """The zero-trust checkpoint. Every tool call an agent wants to make is
     submitted here first; only an ALLOW response authorizes execution."""
     tracer = get_tracer()
@@ -104,7 +122,15 @@ def agent_action(request: Annotated[ActionRequest, Depends(authenticate_agent)])
         span.set_attribute("aegisai.action", request.action)
         span.set_attribute("aegisai.resource", request.resource)
 
-        decision = engine.evaluate(request)
+        denial = _capability_denial(request, x_aravex_capability)
+        if denial:
+            anomaly_tracker.record_denial(request.agent_id)
+            decision = PolicyDecision(
+                request_id=request.request_id, agent_id=request.agent_id, action=request.action,
+                resource=request.resource, decision=Decision.DENY, risk_score=1.0,
+                reasons=[denial], matched_rules=["capability"])
+        else:
+            decision = engine.evaluate(request)
 
         span.set_attribute("aegisai.decision", decision.decision.value)
         span.set_attribute("aegisai.risk_score", decision.risk_score)

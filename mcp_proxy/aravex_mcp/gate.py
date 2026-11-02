@@ -41,9 +41,11 @@ class Verdict:
 
 class Gate:
     def __init__(self, client: httpx.Client, api_key: str, *, approval_wait: float = 0.0,
-                 poll_interval: float = 1.0):
+                 poll_interval: float = 1.0, capability: str | None = None):
         self._client = client
         self._headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+        # A capability can only restrict what the gateway would allow; it never grants.
+        self._action_headers = {**self._headers, **({"X-Aravex-Capability": capability} if capability else {})}
         self.approval_wait = approval_wait
         self.poll_interval = poll_interval
 
@@ -63,7 +65,7 @@ class Gate:
         request_id = action.get("request_id") or str(uuid4())
         action = {**action, "request_id": request_id}
         try:
-            resp = self._client.post("/v1/agent-action", json=action, headers=self._headers)
+            resp = self._client.post("/v1/agent-action", json=action, headers=self._action_headers)
         except Exception as exc:
             return Verdict(ERROR, [f"gateway unavailable ({type(exc).__name__})"], request_id=request_id)
         if resp.status_code != 200:

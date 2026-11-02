@@ -97,11 +97,14 @@ def main(argv: list[str] | None = None) -> int:
             print(f"aravex-mcp: cannot read pins {args.pins}: {exc}", file=sys.stderr)
             return 2
 
-    gate = Gate.for_url(args.gateway_url, api_key, timeout=args.timeout, approval_wait=args.approval_wait)
+    capability = os.environ.get("ARAVEX_CAPABILITY") or None
+    gate = Gate.for_url(args.gateway_url, api_key, timeout=args.timeout, approval_wait=args.approval_wait,
+                        capability=capability)
     if not gate.healthy():
         log.warning("gateway at %s is not answering; every tool call will be refused until it is", args.gateway_url)
-    log.info("gating %s for agent %s through %s (%d tools mapped%s)",
+    log.info("gating %s for agent %s through %s (%d tools mapped%s%s)",
              mapping.server, args.agent_id, args.gateway_url, len(mapping.tools),
+             ", with a capability" if capability else "",
              f", {len(pins)} pinned" if pins is not None else ", definitions not pinned")
     try:
         asyncio.run(serve(args, command, mapping, gate, pins))

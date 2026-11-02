@@ -35,6 +35,7 @@ command moves after `--`. From a source checkout without installing, run
 | `--approval-wait SECONDS` | Wait this long for a person to resolve `HUMAN_APPROVAL`. Default `0`: refuse at once. |
 | `--inspect-results MODE` | `off` (default), `warn` or `block`. Checks what tools return, see below. |
 | `--pins FILE` | `pins.json` from `aravex-mcp scan`. Tools that were not pinned, or whose definition changed since, are hidden and refused. |
+| `ARAVEX_CAPABILITY` (env) | Optional capability token to send with every call. It can only narrow what the gateway allows. See [DELEGATION_AND_AUDIT.md](DELEGATION_AND_AUDIT.md). |
 | `--upstream-env NAME` | Forward this environment variable to the upstream server. Repeatable. |
 
 The upstream server gets only a small default environment plus the variables you

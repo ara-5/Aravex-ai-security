@@ -5,6 +5,19 @@ Newest first. Each entry says what changed and what was checked. See
 
 ## Unreleased
 
+- **Capabilities** (`gateway/capabilities.py`): macaroon-style tokens that can be narrowed by
+  anyone and widened or forged by no one. Presented with `X-Aravex-Capability` (the MCP proxy sends
+  `ARAVEX_CAPABILITY`). They only add restrictions on top of policy. Every token must expire;
+  unknown restrictions are refused; resource restrictions are prefixes, not regexes, and `..` cannot
+  escape one. A command-line tool mints, narrows and inspects. Checked by breaking the signature
+  check, the re-signing on narrowing, expiry, unknown-kind handling, the `..` guard and the gateway
+  wiring (seven ways); the first version of the narrowing tests passed for the wrong reason and was
+  fixed with positive controls.
+- **Tamper-evident audit** (`gateway/audit/chain.py`, `AUDIT_CHAIN_PATH`): decisions and approval
+  resolutions in a hash chain with an optional HMAC key and an external head anchor. The tests show
+  the limits as facts: a keyless chain can be rewritten whole, and truncation passes without an
+  anchor.
+
 - **Result inspection**: `--inspect-results warn|block` checks what a tool returns for
   injected instructions, concealment phrases, private keys and API tokens, and hidden Unicode
   tag characters. `block` withholds the result without echoing it. Off by default because a
