@@ -114,7 +114,8 @@ ARAVEX_API_KEY=... aravex-mcp --gateway-url http://localhost:8000 --agent-id nov
 
 `scan` reads a server's tool definitions and flags the known tool-poisoning patterns
 (hidden instructions, invisible characters, key-file grabs). `--pins` then refuses any
-tool whose description changes after you reviewed it.
+tool whose description changes after you reviewed it, and `--inspect-results block`
+withholds tool output that carries injected instructions or secrets.
 
 ## How the pieces connect
 
@@ -150,8 +151,8 @@ Not done yet:
 - The benign-action set is a small hand-written list; a rule is only as safe as
   that list is complete.
 - Measurements use the offline stand-in model. Real-model results are untested.
-- The MCP proxy gates tool calls and, with pins, tool definitions, but not tool results;
-  its scanner is heuristic; it handles stdio only; and it has not been run against a real
+- The MCP proxy gates tool calls and, with pins, tool definitions, and can check tool
+  results; its scanner and result check are pattern-based; it handles stdio only; and it has not been run against a real
   third-party server yet. See its
   [limits](docs/MCP_PROXY.md#limits).
 - Human approvals need approver keys (`GATEWAY_APPROVER_KEYS="name:key,..."`, separate

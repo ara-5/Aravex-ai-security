@@ -19,9 +19,9 @@ has been validated with customers yet.
 3. **Test the proxy on real MCP servers** (it has only met stand-ins), then add the
    HTTP/SSE transport.
 4. **Cover where MCP attacks actually land.** Done: scanning tool descriptions for poisoning
-   and refusing tools that change after review (`aravex-mcp scan`, `--pins`). Still to do:
-   injected instructions in tool *results*, resources and prompts, and checking the scanner
-   against poisoned servers from outside this repo.
+   and refusing tools that change after review (`aravex-mcp scan`, `--pins`). Also done: checking tool *results* for injected instructions and secrets
+   (`--inspect-results`). Still to do: resources and prompts, and checking the scanner and
+   the result check against poisoned servers from outside this repo.
 5. **Monitor-only mode** that logs what would have been blocked, so a team can trust a
    policy before enforcing it, and benign-action sets learned from real traffic.
 

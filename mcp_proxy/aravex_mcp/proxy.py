@@ -14,7 +14,8 @@ from mcp.server.lowlevel import Server
 
 from aravex_mcp.gate import APPROVED, HUMAN_APPROVAL, Gate, Verdict
 from aravex_mcp.mapping import Mapping
-from aravex_mcp.scan import fingerprint
+from aravex_mcp.inspect_result import inspect_result
+from aravex_mcp.scan import RANK, fingerprint
 
 log = logging.getLogger("aravex_mcp")
 
@@ -43,10 +44,19 @@ def unpinned(name: str) -> types.CallToolResult:
     return types.CallToolResult(isError=True, content=[types.TextContent(type="text", text=text)])
 
 
+def withheld(name: str, issues) -> types.CallToolResult:
+    why = "; ".join(i.detail for i in issues if i.severity == "high")
+    text = f"{BLOCKED_PREFIX} the result of '{name}' was withheld: {why}."
+    return types.CallToolResult(isError=True, content=[types.TextContent(type="text", text=text)])
+
+
 def build_server(upstream: ClientSession, gate: Gate, mapping: Mapping, *,
                  agent_id: str, human_id: str, name: str = "aravex-mcp-proxy",
-                 pins: dict[str, str] | None = None) -> Server:
-    """pins maps tool name -> fingerprint from `aravex-mcp scan`. When given, a tool that
+                 pins: dict[str, str] | None = None, inspect_results: str = "off") -> Server:
+    """inspect_results: "off", "warn" (log findings in what a tool returns) or "block" (withhold a
+    result with a high-severity finding).
+
+    pins maps tool name -> fingerprint from `aravex-mcp scan`. When given, a tool that
     was not pinned, or whose name, description or input schema changed since, is hidden
     from the agent and refused, so a server cannot swap in a poisoned description later."""
     server = Server(name, instructions=(
@@ -101,6 +111,13 @@ def build_server(upstream: ClientSession, gate: Gate, mapping: Mapping, *,
             return refusal(verdict, outcome)
 
         log.info("allowed %s (%s)", tool_name, "approved by a person" if outcome == APPROVED else verdict.decision)
-        return await upstream.call_tool(tool_name, arguments)
+        result = await upstream.call_tool(tool_name, arguments)
+        if inspect_results != "off":
+            issues = inspect_result(result)
+            if issues:
+                log.warning("result of %s: %s", tool_name, [(i.code, i.severity) for i in issues])
+                if inspect_results == "block" and any(RANK[i.severity] >= RANK["high"] for i in issues):
+                    return withheld(tool_name, issues)
+        return result
 
     return server

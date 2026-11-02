@@ -42,6 +42,8 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
     p.add_argument("--timeout", type=float, default=10.0, help="gateway request timeout in seconds")
     p.add_argument("--upstream-env", action="append", default=[], metavar="NAME",
                    help="forward this environment variable to the upstream server (repeatable)")
+    p.add_argument("--inspect-results", choices=["off", "warn", "block"], default="off",
+                   help="check what tools return for injected instructions and secrets: warn logs, block withholds")
     p.add_argument("--pins", help="pins.json from `aravex-mcp scan`; tools not pinned, or changed since, are hidden and refused")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv[:split])  # --help and missing flags are reported before anything else
@@ -60,7 +62,8 @@ async def serve(args: argparse.Namespace, command: list[str], mapping: Mapping, 
     async with stdio_client(params) as (up_read, up_write):
         async with ClientSession(up_read, up_write) as upstream:
             await upstream.initialize()
-            server = build_server(upstream, gate, mapping, agent_id=args.agent_id, human_id=args.human_id, pins=pins)
+            server = build_server(upstream, gate, mapping, agent_id=args.agent_id, human_id=args.human_id, pins=pins,
+                                 inspect_results=args.inspect_results)
             async with stdio_server() as (read, write):
                 await server.run(read, write, server.create_initialization_options())
 

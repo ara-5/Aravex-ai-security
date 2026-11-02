@@ -33,6 +33,7 @@ command moves after `--`. From a source checkout without installing, run
 | `--mapping` | YAML mapping of upstream tools to gateway actions (below). |
 | `--human-id` | Accountable human on the identity chain (default `h-jane-owner`). |
 | `--approval-wait SECONDS` | Wait this long for a person to resolve `HUMAN_APPROVAL`. Default `0`: refuse at once. |
+| `--inspect-results MODE` | `off` (default), `warn` or `block`. Checks what tools return, see below. |
 | `--pins FILE` | `pins.json` from `aravex-mcp scan`. Tools that were not pinned, or whose definition changed since, are hidden and refused. |
 | `--upstream-env NAME` | Forward this environment variable to the upstream server. Repeatable. |
 
@@ -72,6 +73,27 @@ tool disappears and the call is refused.
 This is a static, heuristic check. It will miss poison it has no pattern for and may flag
 innocent text. A clean scan is not proof a server is safe, and a finding is a reason to
 read the description, not proof of an attack.
+
+## What comes back: inspecting results
+
+Injected instructions usually arrive in a tool's *output*: a web page, a file, an email or a
+ticket that talks to the model. `--inspect-results` checks result text (every text block, embedded
+text resources and structured content):
+
+- `warn` logs findings and passes the result through.
+- `block` withholds a result that has a high-severity finding. The agent is told the result was
+  withheld and why, without the withheld content. The tool itself still ran.
+
+High severity: instruction-override and concealment phrases ("ignore previous instructions", hidden
+`<IMPORTANT>` blocks, "don't tell the user"), private keys, AWS key ids, GitHub, Slack and `sk-`
+API tokens, and invisible Unicode tag characters (text a model can read and a person cannot).
+Medium (logged, not blocked): text formatted as a `system:` or `assistant:` message, bidirectional
+controls, runs of zero-width characters. Ordinary emoji sequences, accented and right-to-left
+text pass.
+
+It is a heuristic check on the common crude cases. It will not stop a determined attacker, and
+`block` has a cost: a security article that quotes "ignore previous instructions" is withheld too.
+That is why it is off by default.
 
 ## The mapping
 
@@ -130,11 +152,11 @@ last address). Each was caught.
 
 ## Limits
 
-- **Calls and definitions are gated, results are not.** The proxy gates `tools/call`
-  requests, and with `--pins` it refuses tools whose definition changed. It does not
-  inspect tool *results* (prompt injection or leaked data coming back). The first scan
-  of a server also relies on heuristics, so a description poisoned in a way no pattern
-  covers will be pinned as-is.
+- **Calls, definitions and (optionally) results are checked, all by rules that can be
+  evaded.** The proxy gates `tools/call` requests, with `--pins` it refuses tools whose
+  definition changed, and with `--inspect-results` it checks what comes back. The result
+  check and the scan are pattern-based: a description or result poisoned in a way no
+  pattern covers gets through, and the first scan pins whatever it saw.
 - **The mapping is trusted.** If a destructive tool is mapped as `read`, the gateway
   will judge it as a read. The proxy cannot verify what a tool really does.
 - **Tools only.** Only `tools/list` and `tools/call` are served. Resources, prompts and

@@ -5,6 +5,11 @@ Newest first. Each entry says what changed and what was checked. See
 
 ## Unreleased
 
+- **Result inspection**: `--inspect-results warn|block` checks what a tool returns for
+  injected instructions, concealment phrases, private keys and API tokens, and hidden Unicode
+  tag characters. `block` withholds the result without echoing it. Off by default because a
+  document that merely quotes an attack is withheld too. Ordinary emoji and accented text pass.
+
 - **`aravex-mcp scan`**: reads a stdio MCP server's tool definitions and writes a report,
   a suggested mapping and `pins.json`. Flags known tool-poisoning patterns (hidden
   instruction blocks, invisible characters, key-file grabs with exfiltration wording,
